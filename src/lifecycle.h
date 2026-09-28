@@ -12,5 +12,6 @@ inline std::atomic<bool> stopping{false};
 inline std::atomic<bool> minhook_ready{false};
 inline std::atomic<bool> runner_hooked{false};
 inline std::atomic<bool> present_hooked{false};
+inline std::atomic<bool> damage_hooked{false};  // the probe, only with [probe] damage=1
 
 }  // namespace crsrt::lifecycle

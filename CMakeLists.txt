@@ -42,6 +42,7 @@ add_library(cr-srt SHARED
   src/player.cpp
   src/unload.cpp
   src/hooks/runner.cpp
+  src/hooks/damage.cpp
   src/hooks/present.cpp
   src/overlay/swap.cpp
   src/overlay/renderer.cpp

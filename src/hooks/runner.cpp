@@ -7,6 +7,7 @@
 
 #include "MinHook.h"
 
+#include <atomic>
 #include <cstring>
 
 namespace crsrt::runner {
@@ -16,7 +17,7 @@ namespace {
 using RunnerFn = void (*)(void *, void *, void *, void *);
 
 RunnerFn g_original;
-void *g_world;
+std::atomic<void *> g_world{nullptr};  // read by the damage probe from other threads
 volatile LONG g_calls;
 volatile LONG g_inflight;
 
@@ -63,8 +64,8 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         log::write("runner: first call tid %lu, holder=%p world=%p b=%p c=%p", GetCurrentThreadId(), a, world, b, c);
         player::log_first_look(world);
     } else {
-        if (world != g_world) {
-            log::write("runner: world %p -> %p (call %ld)", g_world, world, static_cast<long>(n));
+        if (void *was = g_world.load(); world != was) {
+            log::write("runner: world %p -> %p (call %ld)", was, world, static_cast<long>(n));
             g_world = world;
         }
         int64_t arch = -1;
@@ -107,6 +108,8 @@ bool health(float *frac, int *max, long *calls) {
     *max = static_cast<int>(v >> 32);
     return true;
 }
+
+void *world() { return g_world.load(); }
 
 long inflight() { return g_inflight; }
 

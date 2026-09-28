@@ -7,6 +7,8 @@
 
 #include <windows.h>
 
+#include <cstdint>
+
 namespace crsrt::ecs {
 
 namespace {
@@ -55,6 +57,65 @@ int type_index(const Archetype &archetype, uint32_t hash) {
     return -1;
 }
 
+bool locate_row(const uint8_t *world, uint64_t row, uint32_t hash, uint32_t stride, RowPlace &out) {
+    // A chunk more than this far below the row cannot hold it: skips the archetype tables of every unrelated chunk.
+    constexpr uint64_t kChunkSpan = 64ull << 20;
+    const uint64_t *slots = chunk_slots(world);
+    bool found = false;
+    uint64_t best = 0;
+    for (int64_t a = 0; a < game::kArchetypeMax;) {
+        int64_t end = a + static_cast<int64_t>(mem::readable_run(&slots[a]) / 8);
+        if (end == a) break;
+        if (end > game::kArchetypeMax) end = game::kArchetypeMax;
+        for (; a < end; a++) {
+            const uint64_t chunk = slots[a];
+            if (!chunk || chunk > row || row - chunk > kChunkSpan) continue;
+            Archetype arch;
+            if (!archetype(world, a, arch)) continue;
+            int i = type_index(arch, hash);
+            if (i < 0) continue;
+            const uint32_t column = arch.offsets[i];
+            if (row < chunk + column) continue;
+            const uint64_t d = row - (chunk + column);
+            if (d % stride || (found && d >= best)) continue;
+            uint32_t next = UINT32_MAX;  // the nearest column after this one bounds it
+            for (uint32_t k = 0; k < arch.count; k++)
+                if (arch.offsets[k] > column && arch.offsets[k] < next) next = arch.offsets[k];
+            const uint32_t capacity = next == UINT32_MAX ? 0 : (next - column) / stride;
+            if (capacity && d / stride >= capacity) continue;
+            out = {a, chunk, column, capacity, static_cast<uint32_t>(d / stride)};
+            best = d;
+            found = true;
+        }
+    }
+    return found;
+}
+
+const uint8_t *row_of(const Archetype &a, uint64_t chunk, uint32_t capacity, uint32_t index, uint32_t hash,
+                      uint32_t *size) {
+    int i = type_index(a, hash);
+    if (i < 0 || !capacity) return nullptr;
+    const uint32_t column = a.offsets[i];
+    uint32_t next = UINT32_MAX;
+    for (uint32_t k = 0; k < a.count; k++)
+        if (a.offsets[k] > column && a.offsets[k] < next) next = a.offsets[k];
+    *size = next == UINT32_MAX ? 0 : (next - column) / capacity;
+    return reinterpret_cast<const uint8_t *>(chunk) + column + static_cast<uint64_t>(index) * *size;
+}
+
+void log_types(const Archetype &a) {
+    char line[480];
+    int n = 0;
+    for (uint32_t i = 0; i < a.count; i++) {
+        n += wsprintfA(line + n, "%08lx@%lx ", static_cast<unsigned long>(a.hashes[i]),
+                       static_cast<unsigned long>(a.offsets[i]));
+        if (n > 400 || i + 1 == a.count) {
+            log::write("arch %ld types: %s", static_cast<long>(a.index), line);
+            n = 0;
+        }
+    }
+}
+
 void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row) {
     static const struct {
         const char *name;
@@ -82,16 +143,7 @@ void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row) {
     log::write("arch %ld: chunk %p hashes %p count %u offs %p tag row %p = chunk+%lx", static_cast<long>(index),
                reinterpret_cast<void *>(chunk), a.hashes, a.count, a.offsets, reinterpret_cast<void *>(tag_row),
                static_cast<unsigned long>(tag_row - chunk));
-    char line[480];
-    int n = 0;
-    for (uint32_t i = 0; i < a.count; i++) {
-        n += wsprintfA(line + n, "%08lx@%lx ", static_cast<unsigned long>(a.hashes[i]),
-                       static_cast<unsigned long>(a.offsets[i]));
-        if (n > 400 || i + 1 == a.count) {
-            log::write("arch %ld types: %s", static_cast<long>(index), line);
-            n = 0;
-        }
-    }
+    log_types(a);
     HMODULE exe = GetModuleHandleW(game::kExeName);
     auto find = reinterpret_cast<FindTypeFn>(reinterpret_cast<uint8_t *>(exe) + game::kFindTypeIndex);
     for (const auto &t : kNamed) {

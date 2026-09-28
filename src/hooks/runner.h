@@ -17,6 +17,9 @@ bool install(HMODULE exe, uintptr_t runner_offset);
 // *calls is the runner's call count either way. Any thread.
 bool health(float *frac, int *max, long *calls);
 
+// The world the runner saw on its last call, or nullptr before the first. Any thread; only as good as that call.
+void *world();
+
 // Threads inside the hook right now; the unloader waits for 0 before unmapping.
 long inflight();
 

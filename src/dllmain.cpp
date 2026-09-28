@@ -4,6 +4,7 @@
 
 #include "cache.h"
 #include "game.h"
+#include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
@@ -78,6 +79,9 @@ DWORD WINAPI boot(LPVOID) {
                        static_cast<unsigned long>(o.get_player), p, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
         player::set_get_player(reinterpret_cast<player::GetPlayerFn>(const_cast<uint8_t *>(p)));
         if (!lifecycle::stopping) lifecycle::runner_hooked = runner::install(exe, o.runner);
+        // the probe after the runner, whose world it reads
+        if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
+            lifecycle::damage_hooked = damage::install(exe);
     }
     if (!lifecycle::stopping) lifecycle::present_hooked = present::install(exe);
     return 0;

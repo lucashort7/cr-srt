@@ -2,6 +2,7 @@
 // return into kills the game, and a DLL left mapped costs nothing.
 #include "unload.h"
 
+#include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
@@ -33,16 +34,17 @@ DWORD WINAPI unloader(LPVOID) {
     // the overlay first, while the Present hook still runs: the swapchain's vtable goes back on the render thread
     if (lifecycle::present_hooked && !overlay::unload()) ExitThread(0);
 
-    if (lifecycle::runner_hooked || lifecycle::present_hooked) {
+    if (lifecycle::runner_hooked || lifecycle::present_hooked || lifecycle::damage_hooked) {
         MH_STATUS ms = MH_DisableHook(MH_ALL_HOOKS);
         for (int t = 0; ms != MH_OK && t < 10; t++) {
             Sleep(100);
             ms = MH_DisableHook(MH_ALL_HOOKS);
         }
-        log::write("unload: hooks %s (runner %s, wrapper %s)",
+        log::write("unload: hooks %s (runner %s, wrapper %s, damage %s)",
                    ms == MH_OK ? "disabled" : "disable FAILED - staying mapped",
                    lifecycle::runner_hooked ? "restored" : "never hooked",
-                   lifecycle::present_hooked ? "restored" : "never hooked");
+                   lifecycle::present_hooked ? "restored" : "never hooked",
+                   lifecycle::damage_hooked ? "restored" : "never hooked");
         if (ms != MH_OK) ExitThread(0);
         // A thread that jumped in before the disable counts itself within a few instructions; the render thread can
         // then sit inside the original Present for a frame or more (vsync, a minimized window) and return into our
@@ -51,10 +53,10 @@ DWORD WINAPI unloader(LPVOID) {
         for (;;) {
             Sleep(200);
             waited += 200;
-            if (present::inflight() == 0 && runner::inflight() == 0) break;
+            if (present::inflight() == 0 && runner::inflight() == 0 && damage::inflight() == 0) break;
             if (waited == 2000)
-                log::write("unload: %ld present / %ld runner call(s) still in flight after 2 s, waiting",
-                           present::inflight(), runner::inflight());
+                log::write("unload: %ld present / %ld runner / %ld damage call(s) still in flight after 2 s, waiting",
+                           present::inflight(), runner::inflight(), damage::inflight());
         }
         log::write("unload: no call in flight after %d ms", waited);
     }

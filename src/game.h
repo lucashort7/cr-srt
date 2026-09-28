@@ -27,6 +27,18 @@ inline constexpr int64_t kTypeEntryBias = 0xc22;
 inline constexpr uintptr_t kOffsetsBase = 0x18450;
 inline constexpr uintptr_t kFindTypeIndex = 0x327F790;  // the game's own int(hashes, count, hash)
 
+// --- Damage, for the probe (hooks/damage.h). Every entity's hit goes through this one function, the player's and each
+// enemy's: take_damage(row, src, cfg, ent, amount, now, evt, bus, tags), the float it returns read from xmm0 by its
+// callers. row is the Health row; ent the caller's per-entity 8-byte column (ctx[4]+0x10+i*8), likely the entity's
+// handle; src a 6-byte row, and a non-zero short at src+2 makes the call return 0 untouched. Decompiled in
+// control-resonant-modding/decompiled/take_damage_exe+0x247EFA0.c. The 2026-09-24 build only: checked by its
+// prologue (mov rax,rsp ... sub rsp,0x150), neither cached nor solved, since a probe does not earn a solve.
+inline constexpr uintptr_t kTakeDamage = 0x247efa0;
+inline constexpr uint8_t kTakeDamagePrologue[] = {0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x08, 0x48, 0x89,
+                                                  0x68, 0x18, 0x48, 0x89, 0x70, 0x20, 0x57, 0x41, 0x56,
+                                                  0x41, 0x57, 0x48, 0x81, 0xec, 0x50, 0x01, 0x00, 0x00};
+inline constexpr uint32_t kHealthRowSize = 0x38;
+
 // --- Component type hashes.
 inline constexpr uint32_t kPlayerTag = 0x59f99e92;  // the immediate inside get_player; its name is unknown
 inline constexpr uint32_t kHealth = 0x3dc2bc5c;     // heron::health::component::Health: +0 fraction, +4 max points
@@ -36,6 +48,11 @@ inline constexpr uint32_t kDead = 0x6e63a89c;
 inline constexpr uint32_t kHealthComponent = 0xa471f608;  // contentgame::HealthComponent, crheal's h_hc
 inline constexpr uint32_t kRegeneration = 0x8b9bc037;
 inline constexpr uint32_t kCombatStatus = 0x17560154;
+// What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
+inline constexpr uint32_t kDebugName = 0x0bca075d;   // coregame::component::DebugName, 16 bytes
+inline constexpr uint32_t kNpcLevel = 0x712eb585;    // heron::leveling::component::NPCLevel, 8 bytes
+inline constexpr uint32_t kFactionData = 0x3796cba6; // heron::faction::component::FactionData, 4 bytes
+inline constexpr uint32_t kSpawnedNpc = 0x4967e683;  // heron::npc_spawner::component::SpawnedNPC, 0x60 bytes
 
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
 // get_player is one of 14 sibling instantiations; the player's is the one whose lookup site carries kPlayerTag.

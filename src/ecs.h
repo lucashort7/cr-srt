@@ -26,6 +26,28 @@ bool archetype(const uint8_t *world, int64_t index, Archetype &out);
 // The type's index in the archetype, or -1.
 int type_index(const Archetype &archetype, uint32_t hash);
 
+// Where a component row sits: its archetype, that archetype's chunk, the column's offset from the chunk, how many rows
+// the column holds (the next column's offset minus this one's, over the row size) and the row's index in it.
+struct RowPlace {
+    int64_t arch = -1;
+    uint64_t chunk = 0;
+    uint32_t column = 0;
+    uint32_t capacity = 0;
+    uint32_t index = 0;
+};
+
+// The archetype whose `hash` column holds `row`, rows `stride` bytes apart; the nearest column below the row wins.
+// False when none does: the entity's chunk is not in the chunk table, or the walk is wrong.
+bool locate_row(const uint8_t *world, uint64_t row, uint32_t hash, uint32_t stride, RowPlace &out);
+
+// The row of type `hash` for the entity at `index` of a chunk whose columns hold `capacity` rows, and the column's
+// width over the capacity in *size (a row's size, padding included). nullptr when the type is not in the archetype.
+const uint8_t *row_of(const Archetype &archetype, uint64_t chunk, uint32_t capacity, uint32_t index, uint32_t hash,
+                      uint32_t *size);
+
+// Logs an archetype's every type hash and offset, several to a line.
+void log_types(const Archetype &archetype);
+
 // Logs an archetype's every type hash and offset, and the rows of the types game.h names. For the first runner call.
 void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row);
 
