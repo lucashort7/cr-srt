@@ -18,10 +18,11 @@ namespace crsrt::snapshot {
 namespace {
 
 // The file, little-endian:
-//   "CRSNAP02" | u64 world | u32 runner calls | u32 slots scanned | u32 world length | the world's first bytes
+//   "CRSNAP03" | u64 world | u32 runner calls | u32 slots scanned | u32 world length | the world's first bytes
 //   per archetype whose tables read: u32 'ARCH' | i32 index | u64 chunk | u32 type count | u32 blob length
 //     | 32 bytes of its hashes entry (world+8+(index+0xc22)*32) | 32 bytes of its offsets entry (world+8+index*32+0x18450)
-//     | u32 hashes[count] | u32 offsets[count] | blob: the chunk's first bytes, its 24-byte header included
+//     | u32 hashes[count] | u32 offsets[count] | u32 n | u32 first[n]: the array the hashes entry's +0 points at,
+//     n from its +0x18 (a few more than count, unread) | blob: the chunk's first bytes, its header included
 //   u32 'END!'
 constexpr uint32_t kArchTag = 0x48435241;  // "ARCH"
 constexpr uint32_t kEndTag = 0x21444e45;   // "END!"
@@ -63,7 +64,7 @@ void take(const uint8_t *world, long calls, const char *why) {
     DWORD t0 = GetTickCount();
     g_buf.clear();
     g_buf.reserve(16u << 20);
-    put("CRSNAP02", 8);
+    put("CRSNAP03", 8);
     put(reinterpret_cast<uint64_t>(world));
     put(static_cast<uint32_t>(calls));
     put(static_cast<uint32_t>(game::kArchetypeMax));
@@ -106,6 +107,16 @@ void take(const uint8_t *world, long calls, const char *why) {
             put_entry(world + 8 + a * 32 + game::kOffsetsBase);
             put(arch.hashes, arch.count * 4);
             put(arch.offsets, arch.count * 4);
+            const uint8_t *entry = world + 8 + (a + game::kTypeEntryBias) * 32;
+            const auto *first = *reinterpret_cast<const uint8_t *const *>(entry);
+            uint32_t n = *reinterpret_cast<const uint32_t *>(entry + 0x18);
+            if (n > 4096) n = 0;
+            const size_t n_at = g_buf.size();
+            put(n);
+            if (n && !put_copy(first, n * 4)) {
+                const uint32_t none = 0;
+                std::memcpy(g_buf.data() + n_at, &none, 4);
+            }
             if (blob) {
                 if (put_copy(reinterpret_cast<const void *>(chunk), blob)) {
                     blobs++;
