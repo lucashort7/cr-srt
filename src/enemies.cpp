@@ -82,6 +82,9 @@ int g_found_n, g_shields_n, g_total_logged = -1;
 long g_list_logged_at = -kListGap;
 bool g_player_row_said, g_first_said, g_unreadable_said;
 uint8_t g_combat_logged[32];
+constexpr int kKindsLogged = 256;
+uint64_t g_kinds_seen[kKindsLogged];  // every kind logged once, on its first sighting
+int g_kinds_seen_n;
 long g_combat_logged_at = -kListGap;
 
 const int64_t g_qpc_hz = [] {
@@ -330,6 +333,28 @@ void tenths(float v, char *out) {
     wsprintfA(out, "%s%ld.%ld", t < 0 ? "-" : "", std::labs(t) / 10, std::labs(t) % 10);
 }
 
+// A kind never seen in this process, to the log once with what it was met as: the key a panel shows only by its
+// first two bytes, whole, for the kinds' names.
+void log_new_kinds(long calls) {
+    for (int i = 0; i < g_found_n && g_kinds_seen_n < kKindsLogged; i++) {
+        const Enemy &e = g_found[i];
+        uint64_t kind;
+        std::memcpy(&kind, e.kind, sizeof kind);
+        bool seen = false;
+        for (int k = 0; k < g_kinds_seen_n && !seen; k++) seen = g_kinds_seen[k] == kind;
+        if (seen) continue;
+        g_kinds_seen[g_kinds_seen_n++] = kind;
+        char dist[24];
+        tenths(e.distance, dist);
+        log::write("enemies: new kind %02x%02x%02x%02x%02x%02x%02x%02x  %ld max  faction %08lx  lvl %ld  b3c %u  from "
+                   "%lx/%lu  dist %s (call %ld)",
+                   e.kind[0], e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7],
+                   static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level),
+                   e.byte3c, static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation),
+                   dist, calls);
+    }
+}
+
 void log_list(long calls) {
     log::write("enemies: %d (call %ld), nearest first:", g_found_n, calls);
     for (int i = 0; i < g_found_n && i < kListLogRows; i++) {
@@ -388,6 +413,7 @@ void tick(void *world, long calls) {
         g_period.max_us = us;
         g_period.slowest = g_walk;
     }
+    log_new_kinds(calls);
     if (g_found_n != g_total_logged && calls - g_list_logged_at >= kListGap) {
         log_list(calls);
         g_total_logged = g_found_n;
