@@ -77,6 +77,26 @@ void dump_row(const char *what, const uint8_t *row, uint32_t size) {
                text[0] ? "| *[0] -> \"" : "", text, text[0] ? "\"" : "");
 }
 
+// For each of a row's first four 8-byte slots that points at readable memory, 0x40 bytes there as hex and as text:
+// one level down, where a component that only holds a pointer keeps its content.
+void follow_row(const char *what, const uint8_t *row, uint32_t size) {
+    if (!row || size < 8 || !mem::readable(row, size < 32 ? size : 32)) return;
+    for (uint32_t slot = 0; slot < 4 && (slot + 1) * 8 <= size; slot++) {
+        const auto *p = *reinterpret_cast<const uint8_t *const *>(row + slot * 8);
+        if (reinterpret_cast<uintptr_t>(p) < 0x10000 || !mem::readable(p, 0x40)) continue;
+        char own[96];
+        mem::owner_of(p, own, sizeof own);
+        char hex[0x40 * 3 + 8], text[0x41];
+        int k = 0;
+        for (int i = 0; i < 0x40; i++) {
+            k += wsprintfA(hex + k, "%02x%s", p[i], (i % 8 == 7) ? " " : "");
+            text[i] = (p[i] >= 32 && p[i] < 127) ? static_cast<char>(p[i]) : '.';
+        }
+        text[0x40] = 0;
+        log::write("    %s [%lu] -> %p (%s) | %s| %s", what, static_cast<unsigned long>(slot), p, own, hex, text);
+    }
+}
+
 void describe(const uint8_t *world, const ecs::RowPlace &place, uint64_t ent, int max) {
     ecs::Archetype arch;
     if (!ecs::archetype(world, place.arch, arch)) return;
@@ -90,11 +110,13 @@ void describe(const uint8_t *world, const ecs::RowPlace &place, uint64_t ent, in
         {"NPCLevel", game::kNpcLevel},
         {"FactionData", game::kFactionData},
         {"SpawnedNPC", game::kSpawnedNpc},
+        {"HealthComponent", game::kHealthComponent},
     };
     for (const auto &t : kLook) {
         uint32_t size = 0;
         const uint8_t *row = ecs::row_of(arch, place.chunk, place.capacity, place.index, t.hash, &size);
         dump_row(t.name, row, size);
+        if (t.hash == game::kHealthComponent) follow_row(t.name, row, size);
     }
 }
 
