@@ -63,6 +63,7 @@ struct Count {
     int fresh = 0, changed = 0, retried = 0, chunks = 0, unbounded = 0;
     int lost_types = 0, lost_offsets = 0, lost_rows = 0;
     int64_t player_us = 0, slots_us = 0;  // where the walk's time went: the player's position, the slot loop
+    uint64_t cycles = 0;                  // the CPU cycles this thread spent in it: wall time minus time off the CPU
 
     void add(const Count &o) {
         fresh += o.fresh, changed += o.changed, retried += o.retried, chunks += o.chunks, unbounded += o.unbounded;
@@ -74,6 +75,7 @@ struct Count {
 struct Period {
     long walks = 0, slow = 0;  // slow: over kBudgetUs
     int64_t sum_us = 0, max_us = 0;
+    uint64_t sum_cycles = 0;
     Count sum, slowest;
 } g_period;
 int g_found_n, g_shields_n, g_total_logged = -1;
@@ -198,7 +200,9 @@ void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
         e.level = at<int32_t>(g_level + r * game::kNpcLevelRowSize);
         const uint8_t *spawned = g_spawned + r * game::kSpawnedNpcRowSize;
         std::memcpy(e.kind, spawned + game::kSpawnedKind, sizeof e.kind);
-        e.tier = spawned[game::kSpawnedTier];
+        e.byte3c = spawned[game::kSpawnedByte3c];
+        e.source_id = at<uint32_t>(spawned + game::kSpawnedSource);
+        e.source_generation = at<uint32_t>(spawned + game::kSpawnedSource + 4);
         std::memcpy(e.position, g_transform + r * game::kWorldTransformRowSize + game::kWorldPosition,
                     sizeof e.position);
     }
@@ -335,12 +339,14 @@ void log_list(long calls) {
         if (e.shield_max)
             wsprintfA(shield, "  shield %d/%ld", static_cast<int>(e.shield_fraction * e.shield_max + 0.5f),
                       static_cast<long>(e.shield_max));
-        log::write("  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  tier %u  "
-                   "dist %s%s",
+        log::write("  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  b3c %u  "
+                   "from %lx/%lu  dist %s%s",
                    static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation),
                    static_cast<int>(e.fraction * e.max + 0.5f), static_cast<long>(e.max),
                    static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0], e.kind[1], e.kind[2],
-                   e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.tier, dist, shield);
+                   e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c,
+                   static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist,
+                   shield);
     }
 }
 
@@ -360,9 +366,13 @@ void tick(void *world, long calls) {
         return;
     }
     g_walk = {};
+    ULONG64 c0 = 0, c1 = 0;
+    QueryThreadCycleTime(GetCurrentThread(), &c0);
     walk(world, slots, calls);
     publish(calls);
+    QueryThreadCycleTime(GetCurrentThread(), &c1);
     const int64_t us = now_us() - t0;
+    g_walk.cycles = c1 - c0;
 
     if (!g_first_said) {
         log::write("enemies: first walk, %ld slots, %d archetypes classified in %ld us", static_cast<long>(slots),
@@ -371,6 +381,7 @@ void tick(void *world, long calls) {
     }
     g_period.walks++;
     g_period.sum_us += us;
+    g_period.sum_cycles += g_walk.cycles;
     g_period.sum.add(g_walk);
     if (us > kBudgetUs) g_period.slow++;
     if (us > g_period.max_us) {
@@ -390,10 +401,14 @@ void tick(void *world, long calls) {
         log::write("  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, "
                    "%d rows; %d Health columns unbounded",
                    t.fresh, t.changed, t.retried, t.chunks, t.lost_types, t.lost_offsets, t.lost_rows, t.unbounded);
-        log::write("  the slowest walk: player %ld us, slots %ld us; classified %d new, %d changed, %d retried; "
-                   "%d chunks; copies failed: %d types, %d offsets, %d rows",
-                   static_cast<long>(m.player_us), static_cast<long>(m.slots_us), m.fresh, m.changed, m.retried,
-                   m.chunks, m.lost_types, m.lost_offsets, m.lost_rows);
+        // The slowest walk's cycles as microseconds at the period's rate: far under its wall time = off the CPU.
+        const long on_cpu = g_period.sum_cycles
+                                ? static_cast<long>(m.cycles * static_cast<uint64_t>(g_period.sum_us) / g_period.sum_cycles)
+                                : -1;
+        log::write("  the slowest walk: player %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, %d changed, "
+                   "%d retried; %d chunks; copies failed: %d types, %d offsets, %d rows",
+                   static_cast<long>(m.player_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed,
+                   m.retried, m.chunks, m.lost_types, m.lost_offsets, m.lost_rows);
         g_period = {};
     }
 }

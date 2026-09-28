@@ -127,7 +127,7 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
     std::snprintf(text, sizeof text, "enemies  %d   shown %d", g_list.total, within);
     text_at(at, px, text);
 
-    const float bar_w = std::floor(px * 8.0f), bar_h = std::floor(px * 0.45f), shield_h = std::floor(px * 0.2f);
+    const float bar_w = std::floor(px * 8.0f), bar_h = std::floor(px * 0.45f), shield_h = std::floor(px * 0.3f);
     float y = at.y + std::floor(px * 1.5f);
     int drawn = 0;
     for (int i = 0; i < g_list.count && drawn < g_rows; i++) {
@@ -142,13 +142,17 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
             std::snprintf(text, sizeof text, "%s %02x%02x  lv%d  %.0fm", faction, e.kind[0], e.kind[1],
                           static_cast<int>(e.level), e.distance);
         text_at(ImVec2(at.x, y), px, text);
-        y += px;
-        if (e.shield_max > 0 && e.shield_fraction > 0.0f)
-            bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
-        const float bar_y = y + shield_h + 2.0f;
+        y += px + std::floor(px * 0.2f);  // clear of the text, so the shield does not read as an underline
+        const bool shielded = e.shield_max > 0 && e.shield_fraction > 0.0f;
+        if (shielded) bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
+        const float bar_y = y + shield_h + 1.0f;
         bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, IM_COL32(210, 50, 40, 230));
-        std::snprintf(text, sizeof text, "%d / %d", static_cast<int>(e.fraction * e.max + 0.5f),
-                      static_cast<int>(e.max));
+        const int hp = static_cast<int>(e.fraction * e.max + 0.5f);
+        if (shielded)
+            std::snprintf(text, sizeof text, "%d / %d  +%d", hp, static_cast<int>(e.max),
+                          static_cast<int>(e.shield_fraction * e.shield_max + 0.5f));
+        else
+            std::snprintf(text, sizeof text, "%d / %d", hp, static_cast<int>(e.max));
         const float npx = number_px(stats_px);
         text_at(ImVec2(at.x + bar_w + std::floor(px * 0.4f), std::floor(bar_y + (bar_h - npx) * 0.5f)), npx, text);
         y = bar_y + bar_h + std::floor(px * 0.5f);
