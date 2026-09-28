@@ -30,12 +30,14 @@ bool g_have;
 float g_h, g_v;  // the last derived velocity
 long g_teleport_at = -kWindow;
 
-// One window's extremes: the game's speed, the derived ones, the height; and the three speeds at the sample of the
-// largest vertical speed, where a climb shows whether the game's speed counts it.
+// One window's extremes: the game's speed, the derived ones, the height; and, at the sample of the largest derived
+// vertical speed, the game's speed and its vector beside the derived pair.
 struct Peaks {
     bool any = false;
     float speed = 0, h = 0, v_min = 0, v_max = 0, y_min = 0, y_max = 0;
     float at_v = 0, at_v_speed = -1, at_v_h = 0;
+    bool at_v_has_game = false;
+    float at_v_game_h = 0, at_v_game_v = 0;
 } g_peaks;
 
 const int64_t g_qpc_hz = [] {
@@ -84,17 +86,21 @@ void note(const player::State &s) {
         k.at_v = g_v;
         k.at_v_speed = s.has_speed ? s.speed : -1.0f;
         k.at_v_h = g_h;
+        k.at_v_has_game = s.has_velocity;
+        k.at_v_game_h = s.h;
+        k.at_v_game_v = s.velocity[1];
     }
 }
 
 void close_window(long calls) {
     const Peaks &k = g_peaks;
     if (k.any && (k.speed > kFast || k.v_max > kClimb || k.v_min < -kClimb)) {
-        char line[320];
+        char line[360], game[48] = "--";
+        if (k.at_v_has_game) std::snprintf(game, sizeof game, "h %.4g v %.4g", k.at_v_game_h, k.at_v_game_v);
         std::snprintf(line, sizeof line,
                       "player: 1 s peaks: speed %.4g, calc h %.4g v %.4g .. %.4g, y %.6g .. %.6g; at the largest "
-                      "|v|: speed %.4g, calc h %.4g v %.4g (call %ld)",
-                      k.speed, k.h, k.v_min, k.v_max, k.y_min, k.y_max, k.at_v_speed, k.at_v_h, k.at_v, calls);
+                      "|v|: speed %.4g, calc h %.4g v %.4g, game %s (call %ld)",
+                      k.speed, k.h, k.v_min, k.v_max, k.y_min, k.y_max, k.at_v_speed, k.at_v_h, k.at_v, game, calls);
         log::write("%s", line);
     }
     g_peaks = {};

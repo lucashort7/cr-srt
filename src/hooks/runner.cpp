@@ -33,8 +33,10 @@ player::State g_logged;
 bool same(const player::State &a, const player::State &b) {
     return a.has_health == b.has_health && a.has_position == b.has_position && a.has_speed == b.has_speed &&
            a.fraction == b.fraction && a.max == b.max && a.position[0] == b.position[0] &&
-           a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed && a.arch == b.arch &&
-           a.health_at == b.health_at && a.position_at == b.position_at && a.speed_at == b.speed_at;
+           a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed && a.velocity[0] == b.velocity[0] && a.velocity[1] == b.velocity[1] &&
+           a.velocity[2] == b.velocity[2] && a.arch == b.arch &&
+           a.health_at == b.health_at && a.position_at == b.position_at && a.speed_at == b.speed_at &&
+           a.velocity_at == b.velocity_at;
 }
 
 // "529.1 -43.9 -104.15 at 000001A1B04492F0", "(hidden)" after a value the HUD refuses, "--" for a row not read.
@@ -56,13 +58,14 @@ void log_player(const player::State &s, LONG n) {
         return;
     }
     if (same(s, g_logged)) return;
-    char health[64], position[128], speed[64], calc[48];
+    char health[64], position[128], speed[64], velocity[128], calc[48];
     raw_text(&s.fraction, 1, true, s.health_at, health, sizeof health);
     raw_text(s.position, 3, s.has_position, s.position_at, position, sizeof position);
     raw_text(&s.speed, 1, s.has_speed, s.speed_at, speed, sizeof speed);
+    raw_text(s.velocity, 3, s.has_velocity, s.velocity_at, velocity, sizeof velocity);
     motion::text(calc, sizeof calc);
-    log::write("player: arch %ld health %s of %ld, pos %s, speed %s, %s (call %ld)", static_cast<long>(s.arch), health,
-               static_cast<long>(s.max), position, speed, calc, static_cast<long>(n));
+    log::write("player: arch %ld health %s of %ld, pos %s, speed %s, vel %s, %s (call %ld)", static_cast<long>(s.arch),
+               health, static_cast<long>(s.max), position, speed, velocity, calc, static_cast<long>(n));
     g_logged = s;
 }
 
@@ -86,10 +89,10 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         }
         player::State s;
         player::read(world, s);
+        motion::sample(s, n);
         AcquireSRWLockExclusive(&g_lock);
         g_player = s;
         ReleaseSRWLockExclusive(&g_lock);
-        motion::sample(s, n);
         if (n % 600 == 0) log_player(s, n);  // ~every 20 s at the runner's 30 calls a second
     }
     if (Tick tick = g_tick.load(); tick && world) tick(world, n);

@@ -18,15 +18,18 @@ struct State {
     float fraction = 0.0f;   // Health +0, of max
     int32_t max = 0;         // Health +4, in points
     float position[3] = {};  // WorldTransformReadOnly +0x10, Y up
-    float speed = 0.0f;      // Movement +0x20, metres a second
+    float speed = 0.0f;      // Movement +0x20, metres a second, 0 through most of a jump
+    bool has_velocity = false;
+    float velocity[3] = {};  // MovementState +0, metres a second, Y up
+    float h = 0.0f, total = 0.0f;  // its length on the ground plane (x-z), and its whole length
     // Where each value was read, for the log and a Cheat Engine check: 0 = that row was not read.
     int64_t arch = -1;
-    uint64_t health_at = 0, position_at = 0, speed_at = 0;
+    uint64_t health_at = 0, position_at = 0, speed_at = 0, velocity_at = 0;
 };
 
-// The player's Health, position and speed: row 0 of the chunk get_player names. has_health false leaves every flag
+// The player's Health, position, speed and velocity: row 0 of the chunk get_player names. has_health false leaves every flag
 // false. Cheap enough for every runner call: a repeat chunk skips the archetype scan, and one VirtualQuery covers the
-// three rows. Runner thread only.
+// four rows. Runner thread only.
 void read(void *world, State &out);
 
 // The player's Health row (+0 the fraction of max as a float, +4 max health in points as an int), or nullptr when

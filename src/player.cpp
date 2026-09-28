@@ -30,7 +30,7 @@ struct Memo {
     void *world = nullptr;
     uint64_t chunk = 0;
     int64_t arch = -1;
-    uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent;
+    uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent, state = kAbsent;
 } g_memo;
 
 int g_resolutions;
@@ -72,18 +72,26 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
     const int h = ecs::type_index(a, game::kHealth);
     if (h < 0) return kFailed;
     const int t = ecs::type_index(a, game::kWorldTransform), m = ecs::type_index(a, game::kMovement);
+    const int s = ecs::type_index(a, game::kMovementState);
     const Memo was = g_memo;
-    g_memo = {world, chunk, index, a.offsets[h], t < 0 ? kAbsent : a.offsets[t], m < 0 ? kAbsent : a.offsets[m]};
+    g_memo = {world,
+              chunk,
+              index,
+              a.offsets[h],
+              t < 0 ? kAbsent : a.offsets[t],
+              m < 0 ? kAbsent : a.offsets[m],
+              s < 0 ? kAbsent : a.offsets[s]};
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
-                       was.transform != g_memo.transform || was.movement != g_memo.movement;
+                       was.transform != g_memo.transform || was.movement != g_memo.movement || was.state != g_memo.state;
     if (moved && g_resolutions < kResolutionsLogged) {
         g_resolutions++;
-        char health[16], transform[16], movement[16];
+        char health[16], transform[16], movement[16], state[16];
         offset_text(g_memo.health, health);
         offset_text(g_memo.transform, transform);
         offset_text(g_memo.movement, movement);
-        log::write("player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s%s", static_cast<long>(index),
-                   reinterpret_cast<void *>(chunk), health, transform, movement,
+        offset_text(g_memo.state, state);
+        log::write("player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s, MovementState %s%s",
+                   static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state,
                    g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
     }
     return kFresh;
@@ -148,6 +156,14 @@ void read(void *world, State &out) {
         out.speed_at = chunk + g_memo.movement + game::kMovementSpeed;
         out.speed = at<float>(out.speed_at);
         out.has_speed = std::isfinite(out.speed) && out.speed >= 0.0f && out.speed < kSpeedBound;
+    }
+    if (row_readable(chunk, g_memo.state, game::kMovementStateRowSize, run)) {
+        out.velocity_at = chunk + g_memo.state;
+        std::memcpy(out.velocity, reinterpret_cast<const void *>(out.velocity_at), sizeof out.velocity);
+        const float x = out.velocity[0], y = out.velocity[1], z = out.velocity[2];
+        out.h = std::sqrt(x * x + z * z);
+        out.total = std::sqrt(x * x + y * y + z * z);
+        out.has_velocity = std::isfinite(out.total) && out.total < kSpeedBound;
     }
 }
 

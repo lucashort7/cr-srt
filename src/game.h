@@ -78,7 +78,11 @@ inline constexpr uint32_t kAttachmentRowSize = 8;  // the owner's entity handle
 // speed at +0x20, written each frame as the length of a velocity vector whose column is not resolved yet.
 inline constexpr uint32_t kMovement = 0x59fd0f7a;  // heron::movement::component::Movement
 inline constexpr uint32_t kMovementRowSize = 0x30;
-inline constexpr uint32_t kMovementSpeed = 0x20;  // metres a second: 7.5 jogging, about 11 running
+inline constexpr uint32_t kMovementSpeed = 0x20;  // metres a second, ~2 ticks late, 0 through most of a jump
+// The player's velocity: MovementState +0, a float3 in metres a second, Y up, the vector Movement+0x20 is the length
+// of. Its neighbour MovementRequest (0xee6701db) holds the displacement per tick at +0x10 and a copy at +0x20.
+inline constexpr uint32_t kMovementState = 0xe6b9cb0b;  // coregame::component::MovementState
+inline constexpr uint32_t kMovementStateRowSize = 0x40;
 
 // FactionData's names, found by hashing candidates (2026-09-28); an enemy of another faction shows its hash.
 struct Faction {

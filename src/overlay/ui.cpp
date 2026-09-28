@@ -64,7 +64,10 @@ bool runner_stale(long calls, long frame) {
     return stale;
 }
 
-// The stats block on the left, one row per number: health, position, speed. "--" when the runner cannot resolve the
+// A value that rounds to zero at one decimal, as 0: "-0.0" reads as a direction that is not there.
+float tenth(float v) { return std::fabs(v) < 0.05f ? 0.0f : v; }
+
+// The stats block on the left, one row per number: health, position, the game's speed, its velocity vector. "--" when the runner cannot resolve the
 // row or has stopped being called: a held-over value would read as live. Returns the y below the block.
 float stats(ImVec2 at, float px, const player::State &p, bool stale) {
     const float step = std::floor(px * 1.25f);
@@ -78,14 +81,21 @@ float stats(ImVec2 at, float px, const player::State &p, bool stale) {
     if (stale || !p.has_position)
         std::snprintf(text, sizeof text, "pos  --");
     else
-        std::snprintf(text, sizeof text, "pos  x %.1f  y %.1f  z %.1f", p.position[0], p.position[1], p.position[2]);
+        std::snprintf(text, sizeof text, "pos  x %.1f  y %.1f  z %.1f", tenth(p.position[0]), tenth(p.position[1]),
+                      tenth(p.position[2]));
     text_at(ImVec2(at.x, at.y + step), px, text);
     if (stale || !p.has_speed)
         std::snprintf(text, sizeof text, "speed  --");
     else
         std::snprintf(text, sizeof text, "speed  %.1f m/s", p.speed);
     text_at(ImVec2(at.x, at.y + 2.0f * step), px, text);
-    return at.y + 2.0f * step + std::floor(px * 1.8f);
+    if (stale || !p.has_velocity)
+        std::snprintf(text, sizeof text, "vel  --");
+    else
+        std::snprintf(text, sizeof text, "vel  h %.1f  v %.1f  total %.1f", tenth(p.h), tenth(p.velocity[1]),
+                      tenth(p.total));
+    text_at(ImVec2(at.x, at.y + 3.0f * step), px, text);
+    return at.y + 3.0f * step + std::floor(px * 1.8f);
 }
 
 void read_ini(long frame) {

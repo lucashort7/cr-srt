@@ -1,6 +1,6 @@
-// motion.h — the player's velocity derived from its position between runner calls, beside the game's own speed: a
-// probe of what Movement+0x20 measures (a climb included or not) and of the peaks the 20 s player line misses, a jump,
-// a dash, a fall. Reads nothing of the game's: only what player::read published.
+// motion.h — the player's velocity derived from its position between runner calls, beside the game's own vector
+// (MovementState): a cross-check that sees what the vector does not, a stair climb, and a log of the peaks the 20 s
+// player line misses, a jump, a dash, a fall. Reads nothing of the game's: only what player::read published.
 #pragma once
 
 #include "player.h"
