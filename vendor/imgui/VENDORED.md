@@ -1,0 +1,1 @@
+Dear ImGui v1.92.9b f1cc2ae, https://github.com/ocornut/imgui, MIT (LICENSE.txt). Core files and the dx12 backend, imgui_demo.cpp kept for reading (not built); examples/, docs/, misc/ and the other backends, win32 included, left out.
