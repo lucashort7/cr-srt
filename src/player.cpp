@@ -6,54 +6,157 @@
 #include "log.h"
 #include "memory.h"
 
+#include <windows.h>
+
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
 namespace crsrt::player {
 
 namespace {
 
 GetPlayerFn g_get_player;
 
+constexpr uint32_t kAbsent = UINT32_MAX;  // the archetype lacks the column
+constexpr float kMapBound = 1.0e6f;       // metres; a coordinate past it is not a position
+constexpr float kSpeedBound = 1000.0f;    // metres a second
+constexpr int kResolutionsLogged = 50;
+
 // The last resolution, reused while the world is the same, get_player hands back the same chunk and the table still
 // holds that chunk at that archetype. The chunk alone is not enough: an entity can change archetype and keep its chunk.
+// Each column's offset from the chunk, row 0 being the player's.
 struct Memo {
     void *world = nullptr;
     uint64_t chunk = 0;
     int64_t arch = -1;
-    uint32_t offset = 0;
+    uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent;
 } g_memo;
+
+int g_resolutions;
+bool g_pad_said;
+
+enum Resolved { kFailed, kKept, kFresh };
+
+template <class T>
+T at(uint64_t p) {
+    T v;
+    std::memcpy(&v, reinterpret_cast<const void *>(p), sizeof v);
+    return v;
+}
+
+// get_player's chunk, or 0 when it finds no player.
+uint64_t player_chunk(void *world) {
+    uint64_t out[8] = {};
+    if (!g_get_player || !world) return 0;
+    g_get_player(out, world);
+    return (out[3] & 1) ? out[1] : 0;
+}
+
+void offset_text(uint32_t offset, char *out) {
+    if (offset == kAbsent)
+        lstrcpyA(out, "none");
+    else
+        wsprintfA(out, "+%lx", static_cast<unsigned long>(offset));
+}
+
+// The memo for this chunk: kept unless `force`, else found again by the archetype scan, and logged when that moved
+// anything. kFailed when the chunk's archetype or its Health column is not found.
+Resolved resolve(void *world, uint64_t chunk, bool force) {
+    const auto *w = static_cast<const uint8_t *>(world);
+    if (!force && world == g_memo.world && chunk == g_memo.chunk && ecs::chunk_is_at(w, g_memo.arch, chunk))
+        return kKept;
+    ecs::Archetype a;
+    const int64_t index = ecs::archetype_of_chunk(w, chunk);
+    if (index < 0 || !ecs::archetype(w, index, a)) return kFailed;
+    const int h = ecs::type_index(a, game::kHealth);
+    if (h < 0) return kFailed;
+    const int t = ecs::type_index(a, game::kWorldTransform), m = ecs::type_index(a, game::kMovement);
+    const Memo was = g_memo;
+    g_memo = {world, chunk, index, a.offsets[h], t < 0 ? kAbsent : a.offsets[t], m < 0 ? kAbsent : a.offsets[m]};
+    const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
+                       was.transform != g_memo.transform || was.movement != g_memo.movement;
+    if (moved && g_resolutions < kResolutionsLogged) {
+        g_resolutions++;
+        char health[16], transform[16], movement[16];
+        offset_text(g_memo.health, health);
+        offset_text(g_memo.transform, transform);
+        offset_text(g_memo.movement, movement);
+        log::write("player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s%s", static_cast<long>(index),
+                   reinterpret_cast<void *>(chunk), health, transform, movement,
+                   g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
+    }
+    return kFresh;
+}
+
+// Row `offset`, `size` bytes, readable, given `run` bytes readable from the Health row: the rows above Health, every
+// row in each player archetype seen, cost no VirtualQuery of their own.
+bool row_readable(uint64_t chunk, uint32_t offset, uint32_t size, size_t run) {
+    if (offset == kAbsent) return false;
+    if (offset >= g_memo.health) return offset - g_memo.health + size <= run;
+    return mem::readable(reinterpret_cast<const void *>(chunk + offset), size);
+}
+
+// The memo resolved for get_player's chunk with its Health row readable, and the bytes readable from that row; 0 when
+// not. A kept memo whose row is unreadable is wrong: the scan decides.
+size_t locate(void *world, uint64_t *chunk_out) {
+    const uint64_t chunk = player_chunk(world);
+    if (!chunk) return 0;
+    Resolved r = resolve(world, chunk, false);
+    size_t run = r != kFailed ? mem::readable_run(reinterpret_cast<const void *>(chunk + g_memo.health)) : 0;
+    if (r == kKept && run < 8) {
+        r = resolve(world, chunk, true);
+        run = r != kFailed ? mem::readable_run(reinterpret_cast<const void *>(chunk + g_memo.health)) : 0;
+    }
+    if (run < 8) return 0;
+    *chunk_out = chunk;
+    return run;
+}
+
+bool on_map(float v) { return std::isfinite(v) && std::fabs(v) < kMapBound; }
 
 }  // namespace
 
 void set_get_player(GetPlayerFn fn) { g_get_player = fn; }
 
-const float *health_row(void *world, int64_t *arch_out, uint64_t *chunk_out) {
-    uint64_t out[8] = {};
-    if (!g_get_player || !world) return nullptr;
-    g_get_player(out, world);
-    if (!(out[3] & 1) || !out[1]) return nullptr;
-    const uint64_t chunk = out[1];
-    const auto *w = static_cast<const uint8_t *>(world);
+void read(void *world, State &out) {
+    out = {};
+    uint64_t chunk = 0;
+    const size_t run = locate(world, &chunk);
+    if (!run) return;
+    out.arch = g_memo.arch;
+    out.health_at = chunk + g_memo.health;
+    out.has_health = true;
+    out.fraction = at<float>(chunk + g_memo.health);
+    out.max = at<int32_t>(chunk + g_memo.health + 4);
 
-    if (world == g_memo.world && chunk == g_memo.chunk && ecs::chunk_is_at(w, g_memo.arch, chunk)) {
-        const auto *row = reinterpret_cast<const float *>(chunk + g_memo.offset);
-        if (mem::readable(row, 8)) {
-            *arch_out = g_memo.arch;
-            *chunk_out = chunk;
-            return row;
+    if (row_readable(chunk, g_memo.transform, game::kWorldTransformRowSize, run)) {
+        const uint64_t row = chunk + g_memo.transform;
+        out.position_at = row + game::kWorldPosition;
+        std::memcpy(out.position, reinterpret_cast<const void *>(out.position_at), sizeof out.position);
+        out.has_position = on_map(out.position[0]) && on_map(out.position[1]) && on_map(out.position[2]);
+        // Read as zero once in Cheat Engine, at two decimals: logged the first time it is not, never a gate.
+        const float pad = at<float>(row + game::kWorldPositionPad);
+        if (pad != 0.0f && !g_pad_said) {
+            char text[32];
+            std::snprintf(text, sizeof text, "%.6g", pad);
+            log::write("player: the transform's +0x1c reads %s, not 0 (the first time)", text);
+            g_pad_said = true;
         }
-        // an unreadable row under a matching key means the memo is wrong: the scan decides
     }
+    if (row_readable(chunk, g_memo.movement, game::kMovementRowSize, run)) {
+        out.speed_at = chunk + g_memo.movement + game::kMovementSpeed;
+        out.speed = at<float>(out.speed_at);
+        out.has_speed = std::isfinite(out.speed) && out.speed >= 0.0f && out.speed < kSpeedBound;
+    }
+}
 
-    ecs::Archetype a;
-    int64_t index = ecs::archetype_of_chunk(w, chunk);
-    if (index < 0 || !ecs::archetype(w, index, a)) return nullptr;
-    int i = ecs::type_index(a, game::kHealth);
-    if (i < 0) return nullptr;
-    const auto *row = reinterpret_cast<const float *>(chunk + a.offsets[i]);
-    if (!mem::readable(row, 8)) return nullptr;
-    g_memo = {world, chunk, index, a.offsets[i]};
-    *arch_out = index;
+const float *health_row(void *world, int64_t *arch_out, uint64_t *chunk_out) {
+    uint64_t chunk = 0;
+    if (!locate(world, &chunk)) return nullptr;
+    *arch_out = g_memo.arch;
     *chunk_out = chunk;
-    return row;
+    return reinterpret_cast<const float *>(chunk + g_memo.health);
 }
 
 void log_first_look(void *world) {

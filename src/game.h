@@ -71,8 +71,14 @@ inline constexpr uint32_t kSpawnedSource = 0;     // 8 bytes shaped like an enti
 inline constexpr uint32_t kFactionRowSize = 4;  // FNV-1a 32 of the faction's lowercase name
 inline constexpr uint32_t kNpcLevelRowSize = 8;  // the level in the first int
 inline constexpr uint32_t kWorldTransformRowSize = 0x20;
-inline constexpr uint32_t kWorldPosition = 0x10;  // three floats
+inline constexpr uint32_t kWorldPosition = 0x10;     // three floats, Y up
+inline constexpr uint32_t kWorldPositionPad = 0x1c;  // a zero float after them
 inline constexpr uint32_t kAttachmentRowSize = 8;  // the owner's entity handle
+// The player's speed (player.h): the facing direction as a unit float3 at +0, a copy of the position at +0x10, and the
+// speed at +0x20, written each frame as the length of a velocity vector whose column is not resolved yet.
+inline constexpr uint32_t kMovement = 0x59fd0f7a;  // heron::movement::component::Movement
+inline constexpr uint32_t kMovementRowSize = 0x30;
+inline constexpr uint32_t kMovementSpeed = 0x20;  // metres a second: 7.5 jogging, about 11 running
 
 // FactionData's names, found by hashing candidates (2026-09-28); an enemy of another faction shows its hash.
 struct Faction {

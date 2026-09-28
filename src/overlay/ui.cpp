@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hooks/runner.h"
 #include "log.h"
+#include "player.h"
 
 #include <windows.h>
 
@@ -63,16 +64,28 @@ bool runner_stale(long calls, long frame) {
     return stale;
 }
 
-// The stats block on the left, one row per number, health first. "--" when the runner cannot resolve the row or has
-// stopped being called: a held-over value would read as live.
-void stats(ImVec2 at, float px, bool got, bool stale, float frac, int max) {
-    char text[64];
-    if (!got || stale || !(frac >= 0.0f && frac < 100.0f) || max <= 0)
+// The stats block on the left, one row per number: health, position, speed. "--" when the runner cannot resolve the
+// row or has stopped being called: a held-over value would read as live. Returns the y below the block.
+float stats(ImVec2 at, float px, const player::State &p, bool stale) {
+    const float step = std::floor(px * 1.25f);
+    char text[96];
+    if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0)
         std::snprintf(text, sizeof text, "health  --");
     else
-        std::snprintf(text, sizeof text, "health  %d / %d  (%.1f%%)", static_cast<int>(frac * max + 0.5f), max,
-                      frac * 100.0f);
+        std::snprintf(text, sizeof text, "health  %d / %d  (%.1f%%)", static_cast<int>(p.fraction * p.max + 0.5f),
+                      static_cast<int>(p.max), p.fraction * 100.0f);
     text_at(at, px, text);
+    if (stale || !p.has_position)
+        std::snprintf(text, sizeof text, "pos  --");
+    else
+        std::snprintf(text, sizeof text, "pos  x %.1f  y %.1f  z %.1f", p.position[0], p.position[1], p.position[2]);
+    text_at(ImVec2(at.x, at.y + step), px, text);
+    if (stale || !p.has_speed)
+        std::snprintf(text, sizeof text, "speed  --");
+    else
+        std::snprintf(text, sizeof text, "speed  %.1f m/s", p.speed);
+    text_at(ImVec2(at.x, at.y + 2.0f * step), px, text);
+    return at.y + 2.0f * step + std::floor(px * 1.8f);
 }
 
 void read_ini(long frame) {
@@ -176,14 +189,13 @@ void draw(float width, float height, float px, long frame) {
     for (float size : {px, panel_px(px), number_px(px)}) ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, glyphs);
     injected_line(width, height, px);
 
-    float frac = 0.0f;
-    int max = 0;
+    player::State p;
     long calls = 0;
-    const bool got = runner::health(&frac, &max, &calls);
+    runner::player_state(p, &calls);
     const bool stale = runner_stale(calls, frame);
     const ImVec2 at(std::floor(width * 0.02f), std::floor(height * 0.30f));  // left edge, room below for the panel
-    stats(at, px, got, stale, frac, max);
-    enemy_panel(ImVec2(at.x, at.y + std::floor(px * 1.8f)), px, stale, frame);
+    const float below = stats(at, px, p, stale);
+    enemy_panel(ImVec2(at.x, below), px, stale, frame);
 }
 
 }  // namespace crsrt::ui

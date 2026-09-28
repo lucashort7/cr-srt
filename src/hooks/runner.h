@@ -4,6 +4,8 @@
 // count going still is also the HUD's "the game is not running" signal.
 #pragma once
 
+#include "player.h"
+
 #include <windows.h>
 
 #include <cstdint>
@@ -13,9 +15,9 @@ namespace crsrt::runner {
 // MinHook must be initialised. False with the reason logged.
 bool install(HMODULE exe, uintptr_t runner_offset);
 
-// The player's health as the runner last published it: true = resolved, *frac of *max points; false = not.
-// *calls is the runner's call count either way. Any thread.
-bool health(float *frac, int *max, long *calls);
+// The player as the runner last read it (every flag false before the first read), and the runner's call count in
+// *calls either way. Any thread.
+void player_state(player::State &out, long *calls);
 
 // The world the runner saw on its last call, or nullptr before the first. Any thread; only as good as that call.
 void *world();

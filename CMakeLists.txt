@@ -41,6 +41,7 @@ add_library(crsrt-core STATIC
   src/solve.cpp
   src/boot.cpp
   src/ecs.cpp
+  src/motion.cpp
   src/player.cpp
   src/hooks/runner.cpp)
 target_include_directories(crsrt-core PUBLIC src)

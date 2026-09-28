@@ -3,12 +3,13 @@
 
 #include "lifecycle.h"
 #include "log.h"
+#include "motion.h"
 #include "player.h"
 
 #include "MinHook.h"
 
 #include <atomic>
-#include <cstring>
+#include <cstdio>
 
 namespace crsrt::runner {
 
@@ -22,33 +23,47 @@ std::atomic<void *> g_world{nullptr};  // read by the damage probe from other th
 volatile LONG g_calls;
 volatile LONG g_inflight;
 
-// Runner -> render thread, one 64-bit word so the pair is never torn: max points in the high half, the fraction's
-// float bits in the low half; 0 = not resolved.
-volatile LONG64 g_health_word;
+// Runner -> render thread: the player as the last call read it.
+SRWLOCK g_lock = SRWLOCK_INIT;
+player::State g_player;
 
-// The last health written to the log, so the log only gets a line when something changed.
-const float *g_logged_row;
-float g_logged_health;
-int g_logged_max;
+// The last reading written to the log, so the log only gets a line when something changed.
+player::State g_logged;
 
-void log_health(const float *row, int64_t arch, uint64_t chunk, LONG n) {
-    if (!row) {
-        if (g_logged_row) {
-            log::write("health: not resolved (call %ld)", static_cast<long>(n));
-            g_logged_row = nullptr;
-        }
+bool same(const player::State &a, const player::State &b) {
+    return a.has_health == b.has_health && a.has_position == b.has_position && a.has_speed == b.has_speed &&
+           a.fraction == b.fraction && a.max == b.max && a.position[0] == b.position[0] &&
+           a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed && a.arch == b.arch &&
+           a.health_at == b.health_at && a.position_at == b.position_at && a.speed_at == b.speed_at;
+}
+
+// "529.1 -43.9 -104.15 at 000001A1B04492F0", "(hidden)" after a value the HUD refuses, "--" for a row not read.
+void raw_text(const float *v, int n, bool shown, uint64_t address, char *out, size_t cap) {
+    if (!address) {
+        std::snprintf(out, cap, "--");
         return;
     }
-    float f = row[0];
-    int max = reinterpret_cast<const int32_t *>(row)[1];
-    if (row == g_logged_row && f == g_logged_health && max == g_logged_max) return;
-    int whole = static_cast<int>(f), frac = static_cast<int>((f - static_cast<float>(whole)) * 1000);
-    if (frac < 0) frac = -frac;
-    log::write("health: arch %ld chunk %p row %p = %d.%03d of %d (call %ld)", static_cast<long>(arch),
-               reinterpret_cast<void *>(chunk), row, whole, frac, max, static_cast<long>(n));
-    g_logged_row = row;
-    g_logged_health = f;
-    g_logged_max = max;
+    int k = 0;
+    for (int i = 0; i < n; i++) k += std::snprintf(out + k, cap - k, i ? " %.6g" : "%.6g", v[i]);
+    std::snprintf(out + k, cap - k, "%s at %p", shown ? "" : " (hidden)", reinterpret_cast<void *>(address));
+}
+
+// The raw readings the HUD draws and the address of each, for a check against Cheat Engine.
+void log_player(const player::State &s, LONG n) {
+    if (!s.has_health) {
+        if (g_logged.has_health) log::write("player: not resolved (call %ld)", static_cast<long>(n));
+        g_logged = s;
+        return;
+    }
+    if (same(s, g_logged)) return;
+    char health[64], position[128], speed[64], calc[48];
+    raw_text(&s.fraction, 1, true, s.health_at, health, sizeof health);
+    raw_text(s.position, 3, s.has_position, s.position_at, position, sizeof position);
+    raw_text(&s.speed, 1, s.has_speed, s.speed_at, speed, sizeof speed);
+    motion::text(calc, sizeof calc);
+    log::write("player: arch %ld health %s of %ld, pos %s, speed %s, %s (call %ld)", static_cast<long>(s.arch), health,
+               static_cast<long>(s.max), position, speed, calc, static_cast<long>(n));
+    g_logged = s;
 }
 
 void hk_runner(void *a, void *b, void *c, void *d) {
@@ -69,17 +84,13 @@ void hk_runner(void *a, void *b, void *c, void *d) {
             log::write("runner: world %p -> %p (call %ld)", was, world, static_cast<long>(n));
             g_world = world;
         }
-        int64_t arch = -1;
-        uint64_t chunk = 0;
-        const float *row = player::health_row(world, &arch, &chunk);
-        LONG64 word = 0;
-        if (row) {
-            uint32_t bits;
-            std::memcpy(&bits, row, 4);
-            word = (static_cast<LONG64>(reinterpret_cast<const int32_t *>(row)[1]) << 32) | bits;
-        }
-        InterlockedExchange64(&g_health_word, word);
-        if (n % 600 == 0) log_health(row, arch, chunk, n);  // ~every 20 s at the runner's 30 calls a second
+        player::State s;
+        player::read(world, s);
+        AcquireSRWLockExclusive(&g_lock);
+        g_player = s;
+        ReleaseSRWLockExclusive(&g_lock);
+        motion::sample(s, n);
+        if (n % 600 == 0) log_player(s, n);  // ~every 20 s at the runner's 30 calls a second
     }
     if (Tick tick = g_tick.load(); tick && world) tick(world, n);
     g_original(a, b, c, d);
@@ -101,14 +112,11 @@ bool install(HMODULE exe, uintptr_t runner_offset) {
     return ms == MH_OK;
 }
 
-bool health(float *frac, int *max, long *calls) {
-    LONG64 v = InterlockedCompareExchange64(&g_health_word, 0, 0);
+void player_state(player::State &out, long *calls) {
     *calls = g_calls;
-    if (!v) return false;
-    uint32_t bits = static_cast<uint32_t>(v);
-    std::memcpy(frac, &bits, 4);
-    *max = static_cast<int>(v >> 32);
-    return true;
+    AcquireSRWLockShared(&g_lock);
+    out = g_player;
+    ReleaseSRWLockShared(&g_lock);
 }
 
 void *world() { return g_world.load(); }

@@ -1,4 +1,4 @@
-// player.h — the player's entity, through the game's own get_player, and its Health row.
+// player.h — the player's entity, through the game's own get_player, and its rows: Health, the transform, Movement.
 #pragma once
 
 #include <cstdint>
@@ -10,9 +10,27 @@ using GetPlayerFn = uint64_t *(*)(uint64_t *out, void *world);
 
 void set_get_player(GetPlayerFn fn);
 
+// What the runner reads of the player on one call. A flag false: that row did not resolve on that call, or it held a
+// value no row of its type holds (a position off the map, a negative speed). The Health range is the reader's to check,
+// as before.
+struct State {
+    bool has_health = false, has_position = false, has_speed = false;
+    float fraction = 0.0f;   // Health +0, of max
+    int32_t max = 0;         // Health +4, in points
+    float position[3] = {};  // WorldTransformReadOnly +0x10, Y up
+    float speed = 0.0f;      // Movement +0x20, metres a second
+    // Where each value was read, for the log and a Cheat Engine check: 0 = that row was not read.
+    int64_t arch = -1;
+    uint64_t health_at = 0, position_at = 0, speed_at = 0;
+};
+
+// The player's Health, position and speed: row 0 of the chunk get_player names. has_health false leaves every flag
+// false. Cheap enough for every runner call: a repeat chunk skips the archetype scan, and one VirtualQuery covers the
+// three rows. Runner thread only.
+void read(void *world, State &out);
+
 // The player's Health row (+0 the fraction of max as a float, +4 max health in points as an int), or nullptr when
-// anything on the way is unreadable. Cheap enough for every runner call: a repeat chunk skips the archetype scan.
-// Runner thread only.
+// anything on the way is unreadable. Shares read's resolution. Runner thread only.
 const float *health_row(void *world, int64_t *arch_out, uint64_t *chunk_out);
 
 // get_player's answer and the player's whole archetype, to the log. Once, on the first runner call.
