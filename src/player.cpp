@@ -142,6 +142,7 @@ void read(void *world, State &out) {
         const uint64_t row = chunk + g_memo.transform;
         out.position_at = row + game::kWorldPosition;
         std::memcpy(out.position, reinterpret_cast<const void *>(out.position_at), sizeof out.position);
+        std::memcpy(out.rotation, reinterpret_cast<const void *>(row), sizeof out.rotation);
         out.has_position = on_map(out.position[0]) && on_map(out.position[1]) && on_map(out.position[2]);
         // Read as zero once in Cheat Engine, at two decimals: logged the first time it is not, never a gate.
         const float pad = at<float>(row + game::kWorldPositionPad);

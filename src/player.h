@@ -18,6 +18,7 @@ struct State {
     float fraction = 0.0f;   // Health +0, of max
     int32_t max = 0;         // Health +4, in points
     float position[3] = {};  // WorldTransformReadOnly +0x10, Y up
+    float rotation[4] = {};  // WorldTransformReadOnly +0, a quaternion x y z w: the body's orientation
     float speed = 0.0f;      // Movement +0x20, metres a second, 0 through most of a jump
     bool has_velocity = false;
     float velocity[3] = {};  // MovementState +0, metres a second, Y up

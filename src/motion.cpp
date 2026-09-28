@@ -19,6 +19,7 @@ constexpr int64_t kGapUs = 200000;   // two calls further apart than this stradd
 constexpr float kTeleport = 100.0f;  // metres a second between two calls: no movement, a teleport
 constexpr float kFast = 8.0f;        // a game speed past a jog is worth a peaks line
 constexpr float kClimb = 1.0f;       // so is a vertical speed past this, either way
+constexpr float kTilted = 0.9f;      // the body's up axis below this in world Y: gravity turned, or the body did
 
 struct Sample {
     float p[3];
@@ -29,6 +30,15 @@ int g_held, g_head;  // samples in the ring, and the slot the next one goes to
 bool g_have;
 float g_h, g_v;  // the last derived velocity
 long g_teleport_at = -kWindow;
+bool g_tilted;  // the last up axis logged was tilted
+
+// The body's up axis in world coordinates: the quaternion (x y z w) applied to (0, 1, 0).
+void up_axis(const float q[4], float out[3]) {
+    const float x = q[0], y = q[1], z = q[2], w = q[3];
+    out[0] = 2.0f * (x * y - w * z);
+    out[1] = 1.0f - 2.0f * (x * x + z * z);
+    out[2] = 2.0f * (y * z + w * x);
+}
 
 // One window's extremes: the game's speed, the derived ones, the height; and, at the sample of the largest derived
 // vertical speed, the game's speed and its vector beside the derived pair.
@@ -38,6 +48,7 @@ struct Peaks {
     float at_v = 0, at_v_speed = -1, at_v_h = 0;
     bool at_v_has_game = false;
     float at_v_game_h = 0, at_v_game_v = 0;
+    float up_min = 2, up[3] = {};  // the most tilted up axis of the window, by its world Y
 } g_peaks;
 
 const int64_t g_qpc_hz = [] {
@@ -78,6 +89,12 @@ void note(const player::State &s) {
     if (y < k.y_min) k.y_min = y;
     if (y > k.y_max) k.y_max = y;
     if (s.has_speed && s.speed > k.speed) k.speed = s.speed;
+    float up[3];
+    up_axis(s.rotation, up);
+    if (up[1] < k.up_min) {
+        k.up_min = up[1];
+        k.up[0] = up[0], k.up[1] = up[1], k.up[2] = up[2];
+    }
     if (!g_have) return;
     if (g_h > k.h) k.h = g_h;
     if (g_v < k.v_min) k.v_min = g_v;
@@ -94,6 +111,14 @@ void note(const player::State &s) {
 
 void close_window(long calls) {
     const Peaks &k = g_peaks;
+    const bool tilted = k.any && k.up_min < kTilted;
+    if (tilted != g_tilted || (tilted && k.speed > kFast)) {
+        char line[160];
+        std::snprintf(line, sizeof line, "player: up axis %.3g %.3g %.3g, %s (call %ld)", k.up[0], k.up[1], k.up[2],
+                      tilted ? "tilted" : "upright again", calls);
+        log::write("%s", line);
+        g_tilted = tilted;
+    }
     if (k.any && (k.speed > kFast || k.v_max > kClimb || k.v_min < -kClimb)) {
         char line[360], game[48] = "--";
         if (k.at_v_has_game) std::snprintf(game, sizeof game, "h %.4g v %.4g", k.at_v_game_h, k.at_v_game_v);
