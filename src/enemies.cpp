@@ -62,6 +62,7 @@ Shield g_shields[kMaxFound];
 struct Count {
     int fresh = 0, changed = 0, retried = 0, chunks = 0, unbounded = 0;
     int lost_types = 0, lost_offsets = 0, lost_rows = 0;
+    int64_t player_us = 0, slots_us = 0;  // where the walk's time went: the player's position, the slot loop
 
     void add(const Count &o) {
         fresh += o.fresh, changed += o.changed, retried += o.retried, chunks += o.chunks, unbounded += o.unbounded;
@@ -80,6 +81,18 @@ long g_list_logged_at = -kListGap;
 bool g_player_row_said, g_first_said, g_unreadable_said;
 uint8_t g_combat_logged[32];
 long g_combat_logged_at = -kListGap;
+
+const int64_t g_qpc_hz = [] {
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    return f.QuadPart;
+}();
+
+int64_t now_us() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return t.QuadPart * 1000000 / g_qpc_hz;
+}
 
 SRWLOCK g_lock = SRWLOCK_INIT;
 List g_list;
@@ -253,7 +266,10 @@ void walk(void *world, int64_t slots, long calls) {
     }
     g_found_n = g_shields_n = 0;
     float player[3];
+    const int64_t t0 = now_us();
     const bool located = player_position(world, slots, calls, player);
+    const int64_t t1 = now_us();
+    g_walk.player_us = t1 - t0;
 
     const auto *slot = reinterpret_cast<const uint64_t *>(w + game::kChunkSlotBias * 8);
     for (int64_t a = 0; a < slots; a++) {
@@ -275,6 +291,7 @@ void walk(void *world, int64_t slots, long calls) {
             read_attachments(chunk, c, capacity);
     }
 
+    g_walk.slots_us = now_us() - t1;
     for (int i = 0; i < g_found_n; i++) {
         Enemy &e = g_found[i];
         const uint64_t handle = e.id | static_cast<uint64_t>(e.generation) << 32;
@@ -330,13 +347,7 @@ void log_list(long calls) {
 }  // namespace
 
 void tick(void *world, long calls) {
-    static LARGE_INTEGER freq = [] {
-        LARGE_INTEGER f;
-        QueryPerformanceFrequency(&f);
-        return f;
-    }();
-    LARGE_INTEGER t0, t1;
-    QueryPerformanceCounter(&t0);
+    const int64_t t0 = now_us();
     // One check covers every slot and entry the walk reads: the slots whose entry ends inside the world's region.
     const size_t run = mem::readable_run(world);
     const int64_t entries = run > 8 ? static_cast<int64_t>((run - 8) / 32) - game::kTypeEntryBias : 0;
@@ -351,8 +362,7 @@ void tick(void *world, long calls) {
     g_walk = {};
     walk(world, slots, calls);
     publish(calls);
-    QueryPerformanceCounter(&t1);
-    const int64_t us = (t1.QuadPart - t0.QuadPart) * 1000000 / freq.QuadPart;
+    const int64_t us = now_us() - t0;
 
     if (!g_first_said) {
         log::write("enemies: first walk, %ld slots, %d archetypes classified in %ld us", static_cast<long>(slots),
@@ -380,9 +390,10 @@ void tick(void *world, long calls) {
         log::write("  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, "
                    "%d rows; %d Health columns unbounded",
                    t.fresh, t.changed, t.retried, t.chunks, t.lost_types, t.lost_offsets, t.lost_rows, t.unbounded);
-        log::write("  the slowest walk: classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, "
-                   "%d offsets, %d rows",
-                   m.fresh, m.changed, m.retried, m.chunks, m.lost_types, m.lost_offsets, m.lost_rows);
+        log::write("  the slowest walk: player %ld us, slots %ld us; classified %d new, %d changed, %d retried; "
+                   "%d chunks; copies failed: %d types, %d offsets, %d rows",
+                   static_cast<long>(m.player_us), static_cast<long>(m.slots_us), m.fresh, m.changed, m.retried,
+                   m.chunks, m.lost_types, m.lost_offsets, m.lost_rows);
         g_period = {};
     }
 }

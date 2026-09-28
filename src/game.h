@@ -73,6 +73,16 @@ inline constexpr uint32_t kWorldTransformRowSize = 0x20;
 inline constexpr uint32_t kWorldPosition = 0x10;  // three floats
 inline constexpr uint32_t kAttachmentRowSize = 8;  // the owner's entity handle
 
+// FactionData's names, found by hashing candidates (2026-09-28); an enemy of another faction shows its hash.
+struct Faction {
+    uint32_t hash;
+    const char *name;
+};
+inline constexpr Faction kFactions[] = {
+    {0x4aac31a8, "hiss"},    {0x1d82b4ed, "mold"},       {0x2c99c300, "player"},
+    {0x8c4b1ad8, "neutral"}, {0x20408545, "explosives"}, {0x175869f5, "hedron"},
+};
+
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
 // get_player is one of 14 sibling instantiations; the player's is the one whose lookup site carries kPlayerTag.
 inline constexpr uint8_t kGetPlayerLookup[] = {0x49, 0x8b, 0x5c, 0xfe, 0x48, 0x48, 0x8d, 0x8f, 0, 0, 0, 0, 0x48,
