@@ -31,24 +31,41 @@ add_library(minhook STATIC
   vendor/minhook/hde/hde64.c)
 target_include_directories(minhook PUBLIC vendor/minhook/include)
 
-add_library(cr-srt SHARED
-  src/dllmain.cpp
+# What both DLLs share: the log, memory checks, the exe's sections, the cache and the solve, the ECS walk and the
+# runner hook, which is where either one reads the game.
+add_library(crsrt-core STATIC
   src/log.cpp
   src/memory.cpp
   src/pe.cpp
   src/cache.cpp
   src/solve.cpp
+  src/boot.cpp
   src/ecs.cpp
   src/player.cpp
+  src/hooks/runner.cpp)
+target_include_directories(crsrt-core PUBLIC src)
+target_compile_options(crsrt-core PRIVATE -Wall -Wextra)
+target_link_libraries(crsrt-core PUBLIC minhook)
+
+add_library(cr-srt SHARED
+  src/dllmain.cpp
   src/unload.cpp
-  src/hooks/runner.cpp
   src/hooks/damage.cpp
   src/hooks/present.cpp
   src/overlay/swap.cpp
   src/overlay/renderer.cpp
   src/overlay/ui.cpp)
 set_target_properties(cr-srt PROPERTIES PREFIX "")  # cr-srt.dll, not libcr-srt.dll
-target_include_directories(cr-srt PRIVATE src)
 target_compile_options(cr-srt PRIVATE -Wall -Wextra)
-target_link_libraries(cr-srt PRIVATE imgui minhook dxgi d3dcompiler)
+target_link_libraries(cr-srt PRIVATE crsrt-core imgui dxgi d3dcompiler)
 target_link_options(cr-srt PRIVATE -static -s)
+
+# The probe: the runner hook and a snapshot of the ECS on F9, nothing drawn (src/probe/snapshot.h).
+add_library(cr-probe SHARED
+  src/probe/dllmain.cpp
+  src/probe/unload.cpp
+  src/probe/snapshot.cpp)
+set_target_properties(cr-probe PROPERTIES PREFIX "")
+target_compile_options(cr-probe PRIVATE -Wall -Wextra)
+target_link_libraries(cr-probe PRIVATE crsrt-core)
+target_link_options(cr-probe PRIVATE -static -s)

@@ -17,6 +17,7 @@ namespace {
 using RunnerFn = void (*)(void *, void *, void *, void *);
 
 RunnerFn g_original;
+std::atomic<Tick> g_tick{nullptr};
 std::atomic<void *> g_world{nullptr};  // read by the damage probe from other threads
 volatile LONG g_calls;
 volatile LONG g_inflight;
@@ -80,6 +81,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         InterlockedExchange64(&g_health_word, word);
         if (n % 600 == 0) log_health(row, arch, chunk, n);  // ~every 20 s at the runner's 30 calls a second
     }
+    if (Tick tick = g_tick.load(); tick && world) tick(world, n);
     g_original(a, b, c, d);
     InterlockedDecrement(&g_inflight);
 }
@@ -110,6 +112,8 @@ bool health(float *frac, int *max, long *calls) {
 }
 
 void *world() { return g_world.load(); }
+
+void set_tick(Tick tick) { g_tick = tick; }
 
 long inflight() { return g_inflight; }
 

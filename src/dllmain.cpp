@@ -2,6 +2,7 @@
 // two threads: the boot, which finds and hooks what cr-srt needs, and the unloader (unload.h).
 #include <windows.h>
 
+#include "boot.h"
 #include "cache.h"
 #include "game.h"
 #include "hooks/damage.h"
@@ -20,46 +21,8 @@ namespace {
 
 using namespace crsrt;
 
-HMODULE wait_for_exe() {
-    HMODULE exe = nullptr;
-    for (int tries = 0; tries < 50 && !lifecycle::stopping && !(exe = GetModuleHandleW(game::kExeName)); tries++)
-        Sleep(100);
-    return exe;
-}
-
-// The exe offsets from the cache, or solved by pattern and cached. A [solve] getplayer=<hex> in <basename>.ini is the
-// fallback while the get_player scan is young.
-bool offsets_for(HMODULE exe, cache::Offsets &o) {
-    uint64_t fp = cache::fingerprint(exe);
-    cache::Status st = cache::load(fp, o);
-    log::write("fp %08lx%08lx cache %s", static_cast<unsigned long>(fp >> 32),
-               static_cast<unsigned long>(fp & 0xffffffffUL), cache::describe(st));
-    if (st == cache::Status::Hit) return true;
-
-    o = {};
-    o.get_player = solve::get_player(exe, &o.get_player_lookup);
-    if (!o.get_player) {
-        wchar_t s[32];
-        GetPrivateProfileStringW(L"solve", L"getplayer", L"", s, 32, log::path(L".ini").c_str());
-        if (s[0]) {
-            o.get_player = wcstoull(s, nullptr, 16);
-            log::write("solved getplayer=%lx from [solve] fallback", static_cast<unsigned long>(o.get_player));
-        }
-    }
-    o.runner = solve::runner(exe);
-    if (!o.get_player || !o.runner) {
-        log::write("not solved (getplayer=%lx runner=%lx) - nothing cached", static_cast<unsigned long>(o.get_player),
-                   static_cast<unsigned long>(o.runner));
-        return false;
-    }
-    cache::save(fp, o);
-    log::write("solved getplayer=%lx runner=%lx - cache written", static_cast<unsigned long>(o.get_player),
-               static_cast<unsigned long>(o.runner));
-    return true;
-}
-
-DWORD WINAPI boot(LPVOID) {
-    HMODULE exe = wait_for_exe();
+DWORD WINAPI boot_main(LPVOID) {
+    HMODULE exe = boot::wait_for_exe();
     if (!exe) {
         log::write("boot: %ls not found - nothing hooked", game::kExeName);
         return 0;
@@ -72,7 +35,7 @@ DWORD WINAPI boot(LPVOID) {
     lifecycle::minhook_ready = true;
 
     cache::Offsets o;
-    if (!lifecycle::stopping && offsets_for(exe, o)) {
+    if (!lifecycle::stopping && boot::offsets_for(exe, o)) {
         const uint8_t *p = reinterpret_cast<const uint8_t *>(exe) + o.get_player;
         if (mem::readable(p, 8))
             log::write("getplayer exe+%lx = %p bytes %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -94,7 +57,7 @@ extern "C" BOOL WINAPI DllMain(HMODULE self, DWORD reason, LPVOID) {
         DisableThreadLibraryCalls(self);
         log::init(self);
         log::write("cr-srt attached pid=%lu tick=%lu ms", GetCurrentProcessId(), GetTickCount());
-        HANDLE boot_thread = CreateThread(nullptr, 0, boot, nullptr, 0, nullptr);
+        HANDLE boot_thread = CreateThread(nullptr, 0, boot_main, nullptr, 0, nullptr);
         unload::start(self, boot_thread);
     } else if (reason == DLL_PROCESS_DETACH) {
         log::write("cr-srt detached pid=%lu", GetCurrentProcessId());

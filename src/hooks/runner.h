@@ -20,6 +20,11 @@ bool health(float *frac, int *max, long *calls);
 // The world the runner saw on its last call, or nullptr before the first. Any thread; only as good as that call.
 void *world();
 
+// Called by the hook on every call, before the game's system runs, with the world and the call count: the place to read
+// the ECS where it is stable. Null (the default) calls nothing. Set it before install().
+using Tick = void (*)(void *world, long calls);
+void set_tick(Tick tick);
+
 // Threads inside the hook right now; the unloader waits for 0 before unmapping.
 long inflight();
 
