@@ -18,7 +18,7 @@ namespace crsrt::snapshot {
 namespace {
 
 // The file, little-endian:
-//   "CRSNAP01" | u64 world | u32 runner calls | u32 slots scanned
+//   "CRSNAP02" | u64 world | u32 runner calls | u32 slots scanned | u32 world length | the world's first bytes
 //   per archetype whose tables read: u32 'ARCH' | i32 index | u64 chunk | u32 type count | u32 blob length
 //     | 32 bytes of its hashes entry (world+8+(index+0xc22)*32) | 32 bytes of its offsets entry (world+8+index*32+0x18450)
 //     | u32 hashes[count] | u32 offsets[count] | blob: the chunk's first bytes, its 24-byte header included
@@ -28,6 +28,7 @@ constexpr uint32_t kEndTag = 0x21444e45;   // "END!"
 constexpr uint32_t kBlobSlack = 0x400;     // past the last column's offset: that column's rows, width unknown
 constexpr uint32_t kBlobMax = 4u << 20;    // one chunk, at most
 constexpr long kFlagEvery = 15;            // runner calls between looks for the flag, ~0.5 s
+constexpr uint32_t kWorldMax = 2u << 20;   // the world object: the chunk slots and the archetype entries end ~0x9c450
 
 bool g_key_down;
 std::vector<uint8_t> g_buf;
@@ -62,10 +63,18 @@ void take(const uint8_t *world, long calls, const char *why) {
     DWORD t0 = GetTickCount();
     g_buf.clear();
     g_buf.reserve(16u << 20);
-    put("CRSNAP01", 8);
+    put("CRSNAP02", 8);
     put(reinterpret_cast<uint64_t>(world));
     put(static_cast<uint32_t>(calls));
     put(static_cast<uint32_t>(game::kArchetypeMax));
+    const size_t world_run = mem::readable_run(world);
+    uint32_t world_len = static_cast<uint32_t>(world_run < kWorldMax ? world_run : kWorldMax);
+    const size_t world_at = g_buf.size();
+    put(world_len);
+    if (!put_copy(world, world_len)) {
+        world_len = 0;
+        std::memcpy(g_buf.data() + world_at, &world_len, 4);
+    }
 
     const auto *slots = reinterpret_cast<const uint64_t *>(world + game::kChunkSlotBias * 8);
     int archs = 0, blobs = 0, capped = 0, lost = 0;
@@ -122,9 +131,10 @@ void take(const uint8_t *world, long calls, const char *why) {
     bool ok = h != INVALID_HANDLE_VALUE && WriteFile(h, g_buf.data(), static_cast<DWORD>(g_buf.size()), &written,
                                                      nullptr) && written == g_buf.size();
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    log::write("snapshot (%s, call %ld): %d archetypes, %d chunks with Health (%d capped at 4 MB, %d unreadable), "
-               "%lu KB in %lu ms -> %ls%s",
-               why, calls, archs, blobs, capped, lost, static_cast<unsigned long>(g_buf.size() / 1024),
+    log::write("snapshot (%s, call %ld): world %lu KB, %d archetypes, %d chunks with Health (%d capped at 4 MB, "
+               "%d unreadable), %lu KB in %lu ms -> %ls%s",
+               why, calls, static_cast<unsigned long>(world_len / 1024), archs, blobs, capped, lost,
+               static_cast<unsigned long>(g_buf.size() / 1024),
                GetTickCount() - t0, file.c_str(), ok ? "" : " WRITE FAILED");
     g_buf.clear();
     g_buf.shrink_to_fit();
