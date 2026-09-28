@@ -24,7 +24,7 @@ constexpr long kListGap = 30;            // runner calls between two logs of the
 constexpr int kListLogRows = 8;
 constexpr int64_t kBudgetUs = 1000;     // a walk's budget, a runner call
 
-enum Kind : uint8_t { kUnread, kOther, kNpc, kAttached };
+enum Kind : uint8_t { kUnread, kOther, kNpc, kAttached, kLinked };
 
 // What an archetype's columns say, kept while its entry points at the same hashes: an archetype's types never change,
 // its offsets do (a chunk reallocated from 10 rows to 2 moved every column), so offsets are read on every walk.
@@ -33,6 +33,7 @@ struct Class {
     uint32_t count = 0;
     Kind kind = kUnread;
     int16_t health = -1, spawned = -1, faction = -1, level = -1, transform = -1, attachment = -1, combat = -1;
+    int16_t link = -1;  // HealthLink: a probe of entities whose health is another's, the boss's mini wheels
 };
 
 struct Shield {
@@ -55,6 +56,24 @@ uint8_t g_level[kMaxCapacity * game::kNpcLevelRowSize];
 uint8_t g_transform[kMaxCapacity * game::kWorldTransformRowSize];
 uint8_t g_attachment[kMaxCapacity * game::kAttachmentRowSize];
 Enemy g_found[kMaxFound];
+uint8_t g_link[kMaxCapacity * 32];
+
+// A row with Health and HealthLink and no SpawnedNPC, for the log only: what the panel does not list.
+struct Linked {
+    uint64_t handle;
+    int64_t arch;
+    float fraction;
+    int32_t max;
+    float position[3];
+    uint32_t link_size;
+    uint8_t link[16];
+};
+constexpr int kMaxLinked = 64;
+Linked g_linked[kMaxLinked];
+int g_linked_n, g_linked_logged = -1;
+long g_linked_logged_at = -30;
+float g_player_pos[3];
+bool g_player_located;
 Shield g_shields[kMaxFound];
 
 // What one walk did. Classifications: a slot never seen, an entry now pointing at other hashes, a failed copy tried
@@ -142,10 +161,15 @@ const Class &class_of(const uint8_t *w, int64_t a) {
             case game::kWorldTransform: c.transform = k; break;
             case game::kAttachment: c.attachment = k; break;
             case game::kCombatStatus: c.combat = k; break;
+            case game::kHealthLink: c.link = k; break;
             default: break;
         }
     }
-    c.kind = c.health < 0 ? kOther : c.spawned >= 0 ? kNpc : c.attachment >= 0 ? kAttached : kOther;
+    c.kind = c.health < 0       ? kOther
+             : c.spawned >= 0    ? kNpc
+             : c.attachment >= 0 ? kAttached
+             : c.link >= 0       ? kLinked
+                                 : kOther;
     return c;
 }
 
@@ -223,6 +247,36 @@ void read_attachments(uint64_t chunk, const Class &c, uint32_t capacity) {
     }
 }
 
+// Rows of an archetype with Health and HealthLink and no SpawnedNPC, with the link row's first bytes: whose health
+// they carry, when the link names a handle. The link's width is its column's over the capacity, at most 32 bytes.
+void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch) {
+    const uint32_t column = g_offsets[c.link];
+    uint32_t next = UINT32_MAX;
+    for (uint32_t i = 0; i < c.count; i++)
+        if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
+    uint32_t width = next == UINT32_MAX ? 16 : (next - column) / capacity;
+    if (width > 32) width = 32;
+    if (!width || !copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform) ||
+        !copy_column(chunk, c.link, capacity, width, g_link))
+        return;
+    for (uint32_t r = 0; r < capacity && g_linked_n < kMaxLinked; r++) {
+        const uint8_t *health = g_health + r * game::kHealthRowSize;
+        const auto fraction = at<float>(health);
+        const auto max = at<int32_t>(health + 4);
+        if (!g_handles[r] || !alive(fraction, max)) continue;
+        Linked &l = g_linked[g_linked_n++];
+        l = {};
+        l.handle = g_handles[r];
+        l.arch = arch;
+        l.fraction = fraction;
+        l.max = max;
+        std::memcpy(l.position, g_transform + r * game::kWorldTransformRowSize + game::kWorldPosition,
+                    sizeof l.position);
+        l.link_size = width;
+        std::memcpy(l.link, g_link + r * width, width < sizeof l.link ? width : sizeof l.link);
+    }
+}
+
 // The player's CombatStatus row, up to 32 bytes, to the log when it changes, at most once a second: a probe of what
 // flips when a fight starts and ends. g_offsets holds the player's archetype.
 void log_combat(uint64_t chunk, const Class &c, long calls) {
@@ -277,13 +331,19 @@ void walk(void *world, int64_t slots, long calls) {
     const bool located = player_position(world, slots, calls, player);
     const int64_t t1 = now_us();
     g_walk.player_us = t1 - t0;
+    // The linked rows feed a log line at most once a second: their chunks are read on one call in kListGap.
+    const bool sample_linked = calls % kListGap == 0;
+    if (sample_linked) g_linked_n = 0;
+    g_player_located = located;
+    if (located) std::memcpy(g_player_pos, player, sizeof g_player_pos);
 
     const auto *slot = reinterpret_cast<const uint64_t *>(w + game::kChunkSlotBias * 8);
     for (int64_t a = 0; a < slots; a++) {
         const uint64_t chunk = slot[a];
         if (!chunk) continue;
         const Class &c = class_of(w, a);
-        if (c.kind != kNpc && c.kind != kAttached) continue;
+        if (c.kind != kNpc && c.kind != kAttached && (c.kind != kLinked || !sample_linked || g_linked_n >= kMaxLinked))
+            continue;
         g_walk.chunks++;
         const uint32_t capacity = read_offsets(entry_of(w, a), c);
         if (!capacity) continue;
@@ -294,6 +354,8 @@ void walk(void *world, int64_t slots, long calls) {
         if (!copy_column(chunk, c.health, capacity, game::kHealthRowSize, g_health)) continue;
         if (c.kind == kNpc)
             read_npcs(chunk, c, capacity);
+        else if (c.kind == kLinked)
+            read_linked(chunk, c, capacity, a);
         else
             read_attachments(chunk, c, capacity);
     }
@@ -352,6 +414,32 @@ void log_new_kinds(long calls) {
                    static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level),
                    e.byte3c, static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation),
                    dist, calls);
+    }
+}
+
+float distance_to_player(const float p[3]) {
+    if (!g_player_located) return -1.0f;
+    const float dx = p[0] - g_player_pos[0], dy = p[1] - g_player_pos[1], dz = p[2] - g_player_pos[2];
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+void log_linked(long calls) {
+    log::write("linked: %d rows with Health and HealthLink, no SpawnedNPC (call %ld), nearest first:", g_linked_n, calls);
+    std::sort(g_linked, g_linked + g_linked_n, [](const Linked &a, const Linked &b) {
+        return distance_to_player(a.position) < distance_to_player(b.position);
+    });
+    for (int i = 0; i < g_linked_n && i < kListLogRows; i++) {
+        const Linked &l = g_linked[i];
+        char dist[24], link[16 * 3 + 1];
+        tenths(distance_to_player(l.position), dist);
+        int n = 0;
+        for (uint32_t b = 0; b < l.link_size && b < sizeof l.link; b++)
+            n += wsprintfA(link + n, b % 4 == 3 ? "%02x " : "%02x", l.link[b]);
+        log::write("  %lx/%lu  %d/%ld  arch %ld  dist %s  link (%lu bytes) %s",
+                   static_cast<unsigned long>(static_cast<uint32_t>(l.handle)),
+                   static_cast<unsigned long>(l.handle >> 32), static_cast<int>(l.fraction * l.max + 0.5f),
+                   static_cast<long>(l.max), static_cast<long>(l.arch), dist, static_cast<unsigned long>(l.link_size),
+                   link);
     }
 }
 
@@ -414,6 +502,11 @@ void tick(void *world, long calls) {
         g_period.slowest = g_walk;
     }
     log_new_kinds(calls);
+    if (calls % kListGap == 0 && g_linked_n != g_linked_logged && calls - g_linked_logged_at >= kListGap) {
+        log_linked(calls);
+        g_linked_logged = g_linked_n;
+        g_linked_logged_at = calls;
+    }
     if (g_found_n != g_total_logged && calls - g_list_logged_at >= kListGap) {
         log_list(calls);
         g_total_logged = g_found_n;

@@ -17,6 +17,7 @@ constexpr int kSpan = 6;             // runner calls a derived velocity spans, ~
 constexpr long kWindow = 30;         // runner calls per peaks window, ~1 s
 constexpr int64_t kGapUs = 200000;   // two calls further apart than this straddle a pause: the span starts over
 constexpr float kTeleport = 100.0f;  // metres a second between two calls: no movement, a teleport
+constexpr float kTeleportMin = 3.0f; // metres: a shorter jump is a step over two calls that came close together
 constexpr float kFast = 8.0f;        // a game speed past a jog is worth a peaks line
 constexpr float kClimb = 1.0f;       // so is a vertical speed past this, either way
 constexpr float kTilted = 0.9f;      // the body's up axis below this in world Y: gravity turned, or the body did
@@ -146,8 +147,15 @@ void sample(const player::State &s, long calls) {
         const float dx = s.position[0] - last.p[0], dy = s.position[1] - last.p[1], dz = s.position[2] - last.p[2];
         const float step = std::sqrt(dx * dx + dy * dy + dz * dz);
         if (dt <= 0 || dt > kGapUs) {
+            if (dt > kGapUs && step > kTeleportMin && calls - g_teleport_at >= kWindow) {
+                char line[160];
+                std::snprintf(line, sizeof line, "player: moved %.4g m across a %.3g s pause of the runner, read as a "
+                              "teleport (call %ld)", step, static_cast<float>(dt) / 1e6f, calls);
+                log::write("%s", line);
+                g_teleport_at = calls;
+            }
             restart();
-        } else if (step / (static_cast<float>(dt) / 1e6f) > kTeleport) {
+        } else if (step > kTeleportMin && step / (static_cast<float>(dt) / 1e6f) > kTeleport) {
             if (calls - g_teleport_at >= kWindow) {
                 char line[160];
                 std::snprintf(line, sizeof line, "player: moved %.4g m in %.4g ms between two runner calls, read "
