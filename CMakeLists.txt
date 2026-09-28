@@ -50,6 +50,7 @@ target_link_libraries(crsrt-core PUBLIC minhook)
 add_library(cr-srt SHARED
   src/dllmain.cpp
   src/unload.cpp
+  src/enemies.cpp
   src/hooks/damage.cpp
   src/hooks/present.cpp
   src/overlay/swap.cpp

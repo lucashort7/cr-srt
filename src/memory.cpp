@@ -25,6 +25,11 @@ size_t readable_run(const void *p) {
                                static_cast<const char *>(p));
 }
 
+bool copy(const void *p, void *out, size_t n) {
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), p, out, n, &got) && got == n;
+}
+
 bool is_code(const void *p) {
     MEMORY_BASIC_INFORMATION mbi;
     if (!p || VirtualQuery(p, &mbi, sizeof mbi) == 0 || mbi.State != MEM_COMMIT) return false;

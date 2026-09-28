@@ -13,6 +13,10 @@ bool readable(const void *p, size_t len);
 // whole table this way instead of one per entry.
 size_t readable_run(const void *p);
 
+// Copies n bytes at p to out through ReadProcessMemory, which fails instead of faulting when another thread frees the
+// memory mid-copy. For memory the game's worker threads own: chunks, type and offset tables.
+bool copy(const void *p, void *out, size_t n);
+
 // Committed and executable.
 bool is_code(const void *p);
 

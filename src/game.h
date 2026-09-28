@@ -26,6 +26,14 @@ inline constexpr int64_t kChunkSlotBias = 10;
 inline constexpr int64_t kTypeEntryBias = 0xc22;
 inline constexpr uintptr_t kOffsetsBase = 0x18450;
 inline constexpr uintptr_t kFindTypeIndex = 0x327F790;  // the game's own int(hashes, count, hash)
+// The chunk slots end where the archetype entries begin: past this index a "slot" is an entry's pointer. The highest
+// slot in use was 1267 (2026-09-28).
+inline constexpr int64_t kChunkSlots = (8 + kTypeEntryBias * 32) / 8 - kChunkSlotBias;
+// The world object is one readable region of 447 KB (2026-09-28), which ends before the entry of slot 0x2bbd: a walk
+// bounds itself by the region, not by kChunkSlots.
+// A chunk: a 16-byte header, then one 8-byte entity handle per row (u32 id, u32 generation), then the component
+// columns, each its capacity in rows plus under 16 bytes of alignment padding. It holds exactly its entities.
+inline constexpr uintptr_t kEntityColumn = 0x10;
 
 // --- Damage, for the probe (hooks/damage.h). Every entity's hit goes through this one function, the player's and each
 // enemy's: take_damage(row, src, cfg, ent, amount, now, evt, bus, tags), the float it returns read from xmm0 by its
@@ -47,12 +55,23 @@ inline constexpr uint32_t kHealthFlags = 0x6432f1af;
 inline constexpr uint32_t kDead = 0x6e63a89c;
 inline constexpr uint32_t kHealthComponent = 0xa471f608;  // contentgame::HealthComponent, crheal's h_hc
 inline constexpr uint32_t kRegeneration = 0x8b9bc037;
-inline constexpr uint32_t kCombatStatus = 0x17560154;
+inline constexpr uint32_t kCombatStatus = 0x17560154;  // written by player_status::update_combat_status from the living NPCEnemy rows
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
 inline constexpr uint32_t kDebugName = 0x0bca075d;   // coregame::component::DebugName, 16 bytes
 inline constexpr uint32_t kNpcLevel = 0x712eb585;    // heron::leveling::component::NPCLevel, 8 bytes
 inline constexpr uint32_t kFactionData = 0x3796cba6; // heron::faction::component::FactionData, 4 bytes
 inline constexpr uint32_t kSpawnedNpc = 0x4967e683;  // heron::npc_spawner::component::SpawnedNPC, 0x60 bytes
+// The enemy walk (enemies.h). Row sizes are the types' own: a small column's width over its capacity counts padding.
+inline constexpr uint32_t kWorldTransform = 0x6cfbb2a9;  // coregame::component::WorldTransformReadOnly
+inline constexpr uint32_t kAttachment = 0x5cf3ff20;      // heron::health_attachments::component::Attachment
+inline constexpr uint32_t kSpawnedNpcRowSize = 0x60;
+inline constexpr uint32_t kSpawnedKind = 0x30;  // 8 bytes, the enemy's kind
+inline constexpr uint32_t kSpawnedTier = 0x3c;  // 1 byte: 2 on every enemy, 4 on the largest
+inline constexpr uint32_t kFactionRowSize = 4;  // FNV-1a 32 of the faction's lowercase name
+inline constexpr uint32_t kNpcLevelRowSize = 8;  // the level in the first int
+inline constexpr uint32_t kWorldTransformRowSize = 0x20;
+inline constexpr uint32_t kWorldPosition = 0x10;  // three floats
+inline constexpr uint32_t kAttachmentRowSize = 8;  // the owner's entity handle
 
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
 // get_player is one of 14 sibling instantiations; the player's is the one whose lookup site carries kPlayerTag.
