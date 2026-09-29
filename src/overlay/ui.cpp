@@ -11,6 +11,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -126,7 +127,7 @@ void read_ini(long frame) {
     static const std::wstring ini = log::path(L".ini");
     g_radius = static_cast<int>(GetPrivateProfileIntW(L"enemies", L"radius", 30, ini.c_str()));
     g_rows = static_cast<int>(GetPrivateProfileIntW(L"enemies", L"rows", 8, ini.c_str()));
-    if (g_rows > enemies::kMaxRows) g_rows = enemies::kMaxRows;
+    g_rows = std::min(g_rows, enemies::kMaxRows);
 }
 
 // "hiss", or the hash's first four digits.
@@ -161,7 +162,7 @@ bool shown(const enemies::Enemy &e) { return e.distance < 0.0f || e.distance <= 
 void bar(ImVec2 at, float width, float height, float fraction, ImU32 fill) {
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     if (!(fraction >= 0.0f)) fraction = 0.0f;
-    if (fraction > 1.0f) fraction = 1.0f;
+    fraction = std::min(fraction, 1.0f);
     dl->AddRectFilled(at, ImVec2(at.x + width, at.y + height), IM_COL32(0, 0, 0, 150));
     if (fraction > 0.0f) dl->AddRectFilled(at, ImVec2(at.x + std::floor(width * fraction), at.y + height), fill);
 }

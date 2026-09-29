@@ -273,7 +273,7 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
     for (uint32_t i = 0; i < c.count; i++)
         if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
     uint32_t width = next == UINT32_MAX ? 16 : (next - column) / capacity;
-    if (width > 32) width = 32;
+    width = std::min<uint32_t>(width, 32);
     if (!width || !copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform) ||
         !copy_column(chunk, c.link, capacity, width, g_link))
         return;

@@ -10,6 +10,7 @@
 
 #include "MinHook.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 
@@ -114,7 +115,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         ReleaseSRWLockExclusive(&g_lock);
         const int64_t us = now_us() - t0;
         g_own_sum_us += us;
-        if (us > g_own_max_us) g_own_max_us = us;
+        g_own_max_us = std::max(us, g_own_max_us);
         if (n % 600 == 0) {  // ~every 20 s at the runner's 30 calls a second
             log_player(s, n);
             log::write("runner: own time avg %ld us, max %ld us over 600 calls", static_cast<long>(g_own_sum_us / 600),

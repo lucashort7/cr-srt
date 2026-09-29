@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -87,8 +88,9 @@ void note(const player::State &s) {
         k.any = true;
         k.y_min = k.y_max = y;
     }
-    if (y < k.y_min) k.y_min = y;
-    if (y > k.y_max) k.y_max = y;
+    // The kept value goes first: std::min and std::max return their first argument when the other is NaN.
+    k.y_min = std::min(k.y_min, y);
+    k.y_max = std::max(k.y_max, y);
     if (s.has_speed && s.speed > k.speed) k.speed = s.speed;
     float up[3];
     up_axis(s.rotation, up);
@@ -97,9 +99,9 @@ void note(const player::State &s) {
         k.up[0] = up[0], k.up[1] = up[1], k.up[2] = up[2];
     }
     if (!g_have) return;
-    if (g_h > k.h) k.h = g_h;
-    if (g_v < k.v_min) k.v_min = g_v;
-    if (g_v > k.v_max) k.v_max = g_v;
+    k.h = std::max(k.h, g_h);
+    k.v_min = std::min(k.v_min, g_v);
+    k.v_max = std::max(k.v_max, g_v);
     if (std::fabs(g_v) >= std::fabs(k.at_v)) {
         k.at_v = g_v;
         k.at_v_speed = s.has_speed ? s.speed : -1.0f;

@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace crsrt::ecs {
@@ -27,7 +28,7 @@ int64_t archetype_of_chunk(const uint8_t *world, uint64_t chunk) {
     for (int64_t a = 0; a < game::kArchetypeMax;) {
         int64_t end = a + static_cast<int64_t>(mem::readable_run(&slots[a]) / 8);
         if (end == a) return -1;
-        if (end > game::kArchetypeMax) end = game::kArchetypeMax;
+        end = std::min(end, game::kArchetypeMax);
         for (; a < end; a++)
             if (slots[a] == chunk) return a;
     }
@@ -66,7 +67,7 @@ bool locate_row(const uint8_t *world, uint64_t row, uint32_t hash, uint32_t stri
     for (int64_t a = 0; a < game::kArchetypeMax;) {
         int64_t end = a + static_cast<int64_t>(mem::readable_run(&slots[a]) / 8);
         if (end == a) break;
-        if (end > game::kArchetypeMax) end = game::kArchetypeMax;
+        end = std::min(end, game::kArchetypeMax);
         for (; a < end; a++) {
             const uint64_t chunk = slots[a];
             if (!chunk || chunk > row || row - chunk > kChunkSpan) continue;

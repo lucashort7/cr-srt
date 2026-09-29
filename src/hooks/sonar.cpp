@@ -9,6 +9,7 @@
 
 #include "MinHook.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace crsrt::sonar {
@@ -49,7 +50,7 @@ uint32_t read_active(const uint8_t *active, uint32_t *hash) {
     const uint8_t *list = nullptr;
     uint32_t count = 0;
     if (!field(active, 0, list) || !field(active, game::kActiveCount, count) || count == 0) return 0;
-    if (count > kMaxActive) count = kMaxActive;
+    count = std::min(count, kMaxActive);
     if (!mem::copy(list, g_active, count * game::kActiveStride)) return 0;
     std::memcpy(hash, g_active + game::kActiveDistrictHash, 4);
     return count;
@@ -60,7 +61,7 @@ bool read_name(const uint8_t *db, uint32_t hash, char *out, size_t cap) {
     const uint8_t *array = nullptr;
     uint32_t count = 0;
     if (!field(db, game::kDistrictArray, array) || !field(db, game::kDistrictCount, count) || count == 0) return false;
-    if (count > kMaxDistricts) count = kMaxDistricts;
+    count = std::min(count, kMaxDistricts);
     if (!mem::copy(array, g_catalogue, count * game::kDistrictStride)) return false;
     for (uint32_t i = 0; i < count; i++) {
         const uint8_t *e = g_catalogue + i * game::kDistrictStride;
@@ -84,8 +85,8 @@ bool read_level(const uint8_t *runtime, uint32_t hash, District &d) {
     if (!field(runtime, game::kRuntimeArray, array) || !field(runtime, game::kRuntimeCount, count) || count == 0 ||
         !field(runtime, game::kRuntimeCosts, costs) || !field(runtime, game::kRuntimeCostCount, cost_count))
         return false;
-    if (count > kMaxDistricts) count = kMaxDistricts;
-    if (cost_count > kMaxCosts) cost_count = kMaxCosts;
+    count = std::min(count, kMaxDistricts);
+    cost_count = std::min(cost_count, kMaxCosts);
     if (!mem::copy(array, g_records, count * game::kRuntimeStride) || !mem::copy(costs, g_costs, cost_count * 4))
         return false;
     for (uint32_t i = 0; i < count; i++) {

@@ -8,6 +8,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -83,7 +84,7 @@ void take(const uint8_t *world, long calls, const char *why) {
     for (int64_t a = 0; a < game::kArchetypeMax;) {
         int64_t end = a + static_cast<int64_t>(mem::readable_run(&slots[a]) / 8);
         if (end == a) break;
-        if (end > game::kArchetypeMax) end = game::kArchetypeMax;
+        end = std::min(end, game::kArchetypeMax);
         for (; a < end; a++) {
             ecs::Archetype arch;
             if (!ecs::archetype(world, a, arch) || !arch.count) continue;
@@ -91,8 +92,7 @@ void take(const uint8_t *world, long calls, const char *why) {
             uint32_t blob = 0;
             if (chunk && ecs::type_index(arch, game::kHealth) >= 0) {
                 uint32_t last = 0;
-                for (uint32_t i = 0; i < arch.count; i++)
-                    if (arch.offsets[i] > last) last = arch.offsets[i];
+                for (uint32_t i = 0; i < arch.count; i++) last = std::max(arch.offsets[i], last);
                 size_t want = static_cast<size_t>(last) + kBlobSlack;
                 if (want > kBlobMax) want = kBlobMax, capped++;
                 const size_t run = mem::readable_run(reinterpret_cast<const void *>(chunk));

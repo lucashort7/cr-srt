@@ -9,6 +9,7 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -61,7 +62,7 @@ struct Cost {
     int64_t sum = 0, max = 0;
     void add(int64_t us) {
         sum += us;
-        if (us > max) max = us;
+        max = std::max(us, max);
     }
 } g_wait_cost, g_frame_cost;
 long g_cost_frames;
