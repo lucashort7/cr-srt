@@ -32,3 +32,7 @@ Checks: >
 HeaderFilterRegex: '.*[\\/]src[\\/].*'
 # The build is MinGW g++; without a target clang-tidy assumes MSVC and parses the Windows SDK's headers instead.
 ExtraArgs: ['--target=x86_64-w64-mingw32', '--sysroot=C:/MinGW']
+CheckOptions:
+  # The check counts each `if` as 1 plus its nesting depth. A memory walk is a row of guards inside two loops, so it
+  # scores high while reading plainly: locate_row is 30 lines and scores 40. The default is 25; the highest here is 52.
+  readability-function-cognitive-complexity.Threshold: 60
