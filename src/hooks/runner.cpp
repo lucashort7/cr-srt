@@ -1,7 +1,9 @@
 // runner.cpp
 #include "hooks/runner.h"
 
+#include "game.h"
 #include "lifecycle.h"
+#include "memory.h"
 #include "log.h"
 #include "motion.h"
 #include "player.h"
@@ -96,6 +98,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
     if (n == 1) {
         g_world = world;
         log::write("runner: first call tid %lu, holder=%p world=%p b=%p c=%p", GetCurrentThreadId(), a, world, b, c);
+        log_env_tray("runner", c, 5);  // slot 3 is FixedTime: a fixed step reads as a small float
         player::log_first_look(world);
     } else {
         const int64_t t0 = now_us();
@@ -147,6 +150,33 @@ void player_state(player::State &out, long *calls) {
 }
 
 void *world() { return g_world.load(); }
+
+void log_env_tray(const char *who, void *ctx, int slots) {
+    auto *at = static_cast<uint8_t *>(ctx) + game::kEnvTray;
+    if (!ctx || !mem::readable(at, 8)) {
+        log::write("%s: env tray: ctx %p unreadable", who, ctx);
+        return;
+    }
+    auto **tray = *reinterpret_cast<void ***>(at);
+    if (!mem::readable(tray, slots * 8)) {
+        log::write("%s: env tray %p (ctx %p) unreadable", who, tray, ctx);
+        return;
+    }
+    log::write("%s: env tray %p (ctx %p), %d slots", who, tray, ctx, slots);
+    for (int i = 0; i < slots; i++) {
+        void *p = tray[i];
+        char own[160] = "-", body[200] = "unreadable";
+        if (mem::readable(p, 16)) {
+            mem::owner_of(p, own, sizeof own);
+            const auto *f = static_cast<const float *>(p);
+            const auto *b = static_cast<const uint8_t *>(p);
+            std::snprintf(body, sizeof body, "%g %g %g %g | %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+                          f[0], f[1], f[2], f[3], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10],
+                          b[11], b[12], b[13], b[14], b[15]);
+        }
+        log::write("  slot %d +%x: %p (%s) %s", i, i * 8, p, own, body);
+    }
+}
 
 void set_tick(Tick tick) { g_tick = tick; }
 

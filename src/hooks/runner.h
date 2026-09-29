@@ -30,4 +30,8 @@ void set_tick(Tick tick);
 // Threads inside the hook right now; the unloader waits for 0 before unmapping.
 long inflight();
 
+// Logs a system's env tray (game.h, kEnvTray) off a runner's third argument: each slot's pointer, its owner and its
+// first 16 bytes as four floats and as hex. For checking which slot holds which parameter.
+void log_env_tray(const char *who, void *ctx, int slots);
+
 }  // namespace crsrt::runner

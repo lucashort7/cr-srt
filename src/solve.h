@@ -15,4 +15,8 @@ uintptr_t get_player(HMODULE exe, uintptr_t *lookup);
 // heron::healing::regeneration_update::system's exe offset, or 0 with the reason logged.
 uintptr_t runner(HMODULE exe);
 
+// The exe offset of the system whose getName string starts with `name`, found as the runner is, or 0 with the reason
+// logged. `what` names it in the log.
+uintptr_t system(HMODULE exe, const char *name, const char *what);
+
 }  // namespace crsrt::solve

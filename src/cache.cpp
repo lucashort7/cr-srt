@@ -1,4 +1,5 @@
-// cache.cpp — the line: "cr-srt-cache <version> <fingerprint> getplayer=<hex> getp_lookup=<hex> runner=<hex>".
+// cache.cpp — the line: "cr-srt-cache <version> <fingerprint> getplayer=<hex> getp_lookup=<hex> runner=<hex>
+// sonar=<hex>".
 #include "cache.h"
 
 #include "log.h"
@@ -9,7 +10,7 @@ namespace crsrt::cache {
 
 namespace {
 
-constexpr int kVersion = 1;
+constexpr int kVersion = 2;  // 2: sonar=
 constexpr char kTag[] = "cr-srt-cache ";
 
 unsigned long hi32(uint64_t x) { return static_cast<unsigned long>(x >> 32); }
@@ -73,6 +74,7 @@ Status load(uint64_t fp, Offsets &out) {
         if (len == 9 && std::strncmp(key, "getplayer", 9) == 0) found.get_player = v;
         if (len == 11 && std::strncmp(key, "getp_lookup", 11) == 0) found.get_player_lookup = v;
         if (len == 6 && std::strncmp(key, "runner", 6) == 0) found.runner = v;
+        if (len == 5 && std::strncmp(key, "sonar", 5) == 0) found.sonar = v;
     }
     if (!found.get_player || !found.runner) return Status::BadVersion;  // a line missing a key is solved again
     out = found;
@@ -87,9 +89,10 @@ void save(uint64_t fp, const Offsets &o) {
         return;
     }
     char line[256];
-    int n = wsprintfA(line, "%s%d %08lx%08lx getplayer=%lx getp_lookup=%lx runner=%lx\r\n", kTag, kVersion, hi32(fp),
-                      lo32(fp), static_cast<unsigned long>(o.get_player),
-                      static_cast<unsigned long>(o.get_player_lookup), static_cast<unsigned long>(o.runner));
+    int n = wsprintfA(line, "%s%d %08lx%08lx getplayer=%lx getp_lookup=%lx runner=%lx sonar=%lx\r\n", kTag, kVersion,
+                      hi32(fp), lo32(fp), static_cast<unsigned long>(o.get_player),
+                      static_cast<unsigned long>(o.get_player_lookup), static_cast<unsigned long>(o.runner),
+                      static_cast<unsigned long>(o.sonar));
     DWORD written;
     WriteFile(h, line, static_cast<DWORD>(n), &written, nullptr);
     CloseHandle(h);

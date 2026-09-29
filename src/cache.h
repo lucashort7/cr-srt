@@ -13,6 +13,7 @@ struct Offsets {
     uintptr_t get_player = 0;
     uintptr_t get_player_lookup = 0;  // where the scan found get_player's type hash; kept for the record
     uintptr_t runner = 0;
+    uintptr_t sonar = 0;  // optional: 0 when its solve failed, and cr-srt runs without the district
 };
 
 enum class Status { Absent, BadVersion, BadFingerprint, Hit };

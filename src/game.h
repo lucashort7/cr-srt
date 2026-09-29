@@ -106,10 +106,31 @@ inline constexpr uint8_t kGetPlayerPrologue[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0
                                                  0x18, 0x55, 0x57, 0x41, 0x56, 0x48, 0x8d, 0x6c, 0x24,
                                                  0xb0, 0x48, 0x81, 0xec, 0x50, 0x01, 0x00, 0x00};
 // The runner, heron::healing::regeneration_update::system, is found by its name: the one lea that references
-// this string, then the registration store `lea rax, fn; mov [r15+0x140], rax` within 0x400 bytes after it.
+// this string, then the registration store `lea rax, fn; mov [reg+0x140], rax` within 0x400 bytes after it. The
+// register differs per system (r15 for the runner, rsi for the sonar, r12 elsewhere); the slot does not.
 inline constexpr char kRunnerName[] =
     "ecs::system::getName<void __cdecl heron::healing::regeneration_update::system(";
-inline constexpr uint8_t kRunnerStore[] = {0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x49, 0x89, 0x87, 0x40, 0x01, 0x00, 0x00};
-inline constexpr uint8_t kRunnerStoreMask[] = {1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1};
+inline constexpr int32_t kSystemFnSlot = 0x140;
+
+// --- A system's envs. The runner's third argument holds at +0x58 a tray of pointers, one 8-byte slot per parameter of
+// the system's signature, in its order: regeneration_update's Requests, FixedTime and LuaEvents sit in slots 2-4 (its
+// decompile, ghidra/out/runner.txt), crrank reads update_player_marker's DistrictDatabase and ActiveDistrict in 2-3.
+inline constexpr uintptr_t kEnvTray = 0x58;
+
+// --- The district (AKTH-0106). heron::ui_sonar::update_exploration_sonar::system reads, in slots 0-14: its entity,
+// four queries, SonarData, QuestHUD, ui_map_detail::Database, ZonesMetadata, DistrictMarkerDatabase,
+// DistrictDatabase, DistrictRuntime, ActiveDistrict, world_state::Database, PhysicsScene. Found by name like the runner.
+inline constexpr char kSonarName[] = "ecs::system::getName<void __cdecl heron::ui_sonar::update_exploration_sonar::system(";
+inline constexpr int kSonarSlots = 15;
+inline constexpr uintptr_t kSonarZonesMetadata = 8 * 8;
+inline constexpr uintptr_t kSonarDistrictDatabase = 10 * 8;
+inline constexpr uintptr_t kSonarDistrictRuntime = 11 * 8;
+inline constexpr uintptr_t kSonarActiveDistrict = 12 * 8;
+// DistrictDatabase, as crrank reads it: an array of entries at +0x128, their count (u32) at +0x130, 0x230 bytes each, the
+// id (`zone_pattern_tiles`) at +0x218. ActiveDistrict: crrank reads +0x8 and +0x20, meaning unmeasured.
+inline constexpr uintptr_t kDistrictArray = 0x128;
+inline constexpr uintptr_t kDistrictCount = 0x130;
+inline constexpr uintptr_t kDistrictStride = 0x230;
+inline constexpr uintptr_t kDistrictId = 0x218;
 
 }  // namespace crsrt::game

@@ -54,6 +54,7 @@ add_library(cr-srt SHARED
   src/enemies.cpp
   src/hooks/damage.cpp
   src/hooks/present.cpp
+  src/hooks/sonar.cpp
   src/overlay/swap.cpp
   src/overlay/renderer.cpp
   src/overlay/ui.cpp)

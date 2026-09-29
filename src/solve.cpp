@@ -47,10 +47,11 @@ uintptr_t get_player(HMODULE exe, uintptr_t *lookup) {
 
 // 80 systems register the same way, and the three that share the runner's prologue differ only in RIP-relative
 // globals, so no byte pattern picks it. Its name does: 1 string, 1 lea to it, 1 registration store after the lea.
-uintptr_t runner(HMODULE exe) {
+uintptr_t runner(HMODULE exe) { return system(exe, game::kRunnerName, "runner"); }
+
+uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
     const uint8_t *str = nullptr, *tlo = nullptr, *thi = nullptr;
-    const pe::Pattern name{reinterpret_cast<const uint8_t *>(game::kRunnerName), nullptr,
-                           sizeof game::kRunnerName - 1};
+    const pe::Pattern name{reinterpret_cast<const uint8_t *>(name_text), nullptr, lstrlenA(name_text)};
     for (const IMAGE_SECTION_HEADER &s : pe::sections(exe)) {
         const uint8_t *lo = reinterpret_cast<const uint8_t *>(exe) + s.VirtualAddress, *hi = lo + s.Misc.VirtualSize;
         if (s.Characteristics & IMAGE_SCN_MEM_EXECUTE) {
@@ -65,7 +66,7 @@ uintptr_t runner(HMODULE exe) {
         }
     }
     if (!str || !tlo) {
-        log::write("scan: runner name %s - not solved", str ? "found, no .text" : "not found");
+        log::write("scan: %s name %s - not solved", what, str ? "found, no .text" : "not found");
         return 0;
     }
     DWORD t0 = GetTickCount();
@@ -79,19 +80,26 @@ uintptr_t runner(HMODULE exe) {
         }
     }
     if (leas != 1) {
-        log::write("scan: %d leas to the runner name - not solved", leas);
+        log::write("scan: %d leas to the %s name - not solved", leas, what);
         return 0;
     }
-    const pe::Pattern store{game::kRunnerStore, game::kRunnerStoreMask, sizeof game::kRunnerStore};
-    const uint8_t *hit[2];
-    if (pe::scan(lea, lea + 0x400 < thi ? lea + 0x400 : thi, store, hit, 2) < 1) {
-        log::write("scan: runner name at exe+%lx, lea exe+%lx, no registration store after it - not solved",
+    // lea rax, [rip+fn] then mov [reg+disp32], rax: REX.W (+B), 89, modrm mod=10 reg=rax, a SIB byte when rm=100
+    const uint8_t *hit[1] = {nullptr};
+    for (const uint8_t *p = lea; p + 16 <= thi && p < lea + 0x400 && !hit[0]; p++) {
+        if (p[0] != 0x48 || p[1] != 0x8d || p[2] != 0x05) continue;
+        const uint8_t *q = p + 7;
+        if ((q[0] != 0x48 && q[0] != 0x49) || q[1] != 0x89 || (q[2] & 0xf8) != 0x80) continue;
+        const uint8_t *disp = q + 3 + ((q[2] & 7) == 4 ? 1 : 0);
+        if (*reinterpret_cast<const int32_t *>(disp) == game::kSystemFnSlot) hit[0] = p;
+    }
+    if (!hit[0]) {
+        log::write("scan: %s name at exe+%lx, lea exe+%lx, no registration store after it - not solved", what,
                    off(str, exe), off(lea, exe));
         return 0;
     }
     const uint8_t *fn = hit[0] + 7 + *reinterpret_cast<const int32_t *>(hit[0] + 3);
-    log::write("scan: runner name exe+%lx, lea exe+%lx, store exe+%lx -> runner exe+%lx (%lu ms)", off(str, exe),
-               off(lea, exe), off(hit[0], exe), off(fn, exe), GetTickCount() - t0);
+    log::write("scan: %s name exe+%lx, lea exe+%lx, store exe+%lx -> %s exe+%lx (%lu ms)", what, off(str, exe),
+               off(lea, exe), off(hit[0], exe), what, off(fn, exe), GetTickCount() - t0);
     return off(fn, exe);
 }
 
