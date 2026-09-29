@@ -126,11 +126,31 @@ inline constexpr uintptr_t kSonarZonesMetadata = 8 * 8;
 inline constexpr uintptr_t kSonarDistrictDatabase = 10 * 8;
 inline constexpr uintptr_t kSonarDistrictRuntime = 11 * 8;
 inline constexpr uintptr_t kSonarActiveDistrict = 12 * 8;
-// DistrictDatabase, as crrank reads it: an array of entries at +0x128, their count (u32) at +0x130, 0x230 bytes each, the
-// id (`zone_pattern_tiles`) at +0x218. ActiveDistrict: crrank reads +0x8 and +0x20, meaning unmeasured.
+// Measured 2026-09-29 in pid 1612 against the map's zone panel (The Park 3, 340/700).
+// DistrictDatabase: an array of 0x230-byte entries at +0x128, their count (u32) at +0x130; each entry's id inline at
+// +0x1d0 (ZONE_DOWNTOWN .. THE_GAP, 8 of them) and at +0x218 the u32 hash the other two envs key on.
 inline constexpr uintptr_t kDistrictArray = 0x128;
 inline constexpr uintptr_t kDistrictCount = 0x130;
 inline constexpr uintptr_t kDistrictStride = 0x230;
-inline constexpr uintptr_t kDistrictId = 0x218;
+inline constexpr uintptr_t kDistrictName = 0x1d0;
+inline constexpr uintptr_t kDistrictHash = 0x218;
+// DistrictRuntime: an array of 0x88-byte records at +0x8, their count (u32) at +0x10, and the XP each level costs, a
+// u32 array at +0x18 with its count at +0x20 (500, 600 .. 6000, 15 of them). A record: +0x60 the district's hash,
+// +0x64 its max level, +0x68 the levels completed, +0x74 its XP since level 1.
+inline constexpr uintptr_t kRuntimeArray = 0x8;
+inline constexpr uintptr_t kRuntimeCount = 0x10;
+inline constexpr uintptr_t kRuntimeCosts = 0x18;
+inline constexpr uintptr_t kRuntimeCostCount = 0x20;
+inline constexpr uintptr_t kRuntimeStride = 0x88;
+inline constexpr uintptr_t kRecordHash = 0x60;
+inline constexpr uintptr_t kRecordMaxLevel = 0x64;
+inline constexpr uintptr_t kRecordLevels = 0x68;
+inline constexpr uintptr_t kRecordXp = 0x74;
+// ActiveDistrict: a list at +0 of 16-byte entries, their count (u32) at +0x8; each entry's district hash at +0x8 and
+// another hash at +0xc that differs between entries of one district, a candidate for the section.
+inline constexpr uintptr_t kActiveCount = 0x8;
+inline constexpr uintptr_t kActiveStride = 0x10;
+inline constexpr uintptr_t kActiveDistrictHash = 0x8;
+inline constexpr uintptr_t kActiveOtherHash = 0xc;
 
 }  // namespace crsrt::game

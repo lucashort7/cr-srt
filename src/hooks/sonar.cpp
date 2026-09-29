@@ -9,7 +9,6 @@
 
 #include "MinHook.h"
 
-#include <cstdio>
 #include <cstring>
 
 namespace crsrt::sonar {
@@ -18,172 +17,138 @@ namespace {
 
 using SonarFn = void (*)(void *, void *, void *, void *);
 
+constexpr LONG kEvery = 15;  // calls between two reads, ~0.5 s at the sonar's 30 a second
+constexpr uint32_t kMaxDistricts = 16;
+constexpr uint32_t kMaxCosts = 32;
+constexpr uint32_t kMaxActive = 8;
+
 SonarFn g_original;
 volatile LONG g_calls;
 volatile LONG g_inflight;
 
-// Read by the sonar's own thread only.
-bool g_bad;                    // the catalogue did not look like crrank's: stop reading, pass calls through
-uint8_t g_active[0x40];        // ActiveDistrict's first bytes as last logged
-constexpr size_t kRuntimeCmp = 0x400;
-uint8_t g_runtime[kRuntimeCmp];  // DistrictRuntime's first bytes as last compared
-size_t g_runtime_len;
-ULONGLONG g_rate_t0;
+// Sonar thread -> render thread.
+SRWLOCK g_lock = SRWLOCK_INIT;
+District g_district;
 
-void log_hex(const char *what, const void *p, const uint8_t *bytes, size_t n);
-void snap(const char *name, const void *p, size_t cap, LONG n);
+// Read by the sonar's own thread only: the copies each read is made from, and what the log last said.
+uint8_t g_catalogue[kMaxDistricts * game::kDistrictStride];
+uint8_t g_records[kMaxDistricts * game::kRuntimeStride];
+uint32_t g_costs[kMaxCosts];
+uint8_t g_active[kMaxActive * game::kActiveStride];
+District g_logged;
+uint32_t g_logged_others[kMaxActive];
+uint32_t g_logged_count;
 
-// The id at +kDistrictId of a catalogue entry, a pointer to text or the text itself; "" when neither.
-void id_of(const uint8_t *entry, char *out, size_t cap) {
-    out[0] = 0;
-    const uint8_t *field = entry + game::kDistrictId;
-    if (!mem::readable(field, 8)) return;
-    auto printable = [](const uint8_t *s, size_t n) {
-        size_t i = 0;
-        while (i < n && s[i] >= 0x20 && s[i] < 0x7f) i++;
-        return i;
-    };
-    const auto *text = *reinterpret_cast<const uint8_t *const *>(field);
-    if (mem::readable(text, 48)) {
-        size_t n = printable(text, cap - 1);
-        if (n >= 3) {
-            std::memcpy(out, text, n);
-            out[n] = 0;
-            return;
-        }
-    }
-    size_t n = printable(field, 8 < cap - 1 ? 8 : cap - 1);
-    std::memcpy(out, field, n);
-    out[n] = 0;
+template <typename T>
+bool field(const uint8_t *base, uintptr_t off, T &out) {
+    return mem::copy(base + off, &out, sizeof out);
 }
 
-// The catalogue as crrank reads it: each entry's index, address and id, and false when its shape is not that.
-bool log_catalogue(const uint8_t *db) {
-    if (!mem::readable(db, game::kDistrictCount + 8)) {
-        log::write("sonar: DistrictDatabase %p unreadable", db);
-        return false;
-    }
-    const auto *array = *reinterpret_cast<const uint8_t *const *>(db + game::kDistrictArray);
-    const uint32_t count = *reinterpret_cast<const uint32_t *>(db + game::kDistrictCount);  // +4: capacity?
-    if (count == 0 || count > 256 || !mem::readable(array, game::kDistrictStride)) {
-        log::write("sonar: DistrictDatabase %p: array %p count %lu, %lu bytes readable there - not crrank's shape", db,
-                   array, static_cast<unsigned long>(count), static_cast<unsigned long>(mem::readable_run(array)));
-        log_hex("DistrictDatabase+100", db + 0x100, db + 0x100, 0x40);
-        return false;
-    }
-    log::write("sonar: DistrictDatabase %p: %lu entries at %p", db, static_cast<unsigned long>(count), array);
-    snap("districts", array, count * game::kDistrictStride, 1);
-    int named = 0;
+// The active list's entries copied into g_active, the first one's district hash in *hash; 0 when the list is empty.
+uint32_t read_active(const uint8_t *active, uint32_t *hash) {
+    const uint8_t *list = nullptr;
+    uint32_t count = 0;
+    if (!field(active, 0, list) || !field(active, game::kActiveCount, count) || count == 0) return 0;
+    if (count > kMaxActive) count = kMaxActive;
+    if (!mem::copy(list, g_active, count * game::kActiveStride)) return 0;
+    std::memcpy(hash, g_active + game::kActiveDistrictHash, 4);
+    return count;
+}
+
+// The catalogue entry whose hash is `hash`: its id into `out`. False when none is.
+bool read_name(const uint8_t *db, uint32_t hash, char *out, size_t cap) {
+    const uint8_t *array = nullptr;
+    uint32_t count = 0;
+    if (!field(db, game::kDistrictArray, array) || !field(db, game::kDistrictCount, count) || count == 0) return false;
+    if (count > kMaxDistricts) count = kMaxDistricts;
+    if (!mem::copy(array, g_catalogue, count * game::kDistrictStride)) return false;
     for (uint32_t i = 0; i < count; i++) {
-        const uint8_t *entry = array + i * game::kDistrictStride;
-        char id[64] = "";
-        if (mem::readable(entry, game::kDistrictStride)) id_of(entry, id, sizeof id);
-        if (id[0]) named++;
-        log::write("  district %lu at %p: %s", static_cast<unsigned long>(i), entry, id[0] ? id : "(no id)");
+        const uint8_t *e = g_catalogue + i * game::kDistrictStride;
+        uint32_t h;
+        std::memcpy(&h, e + game::kDistrictHash, 4);
+        if (h != hash) continue;
+        const char *name = reinterpret_cast<const char *>(e + game::kDistrictName);
+        size_t n = 0;
+        while (n + 1 < cap && n < game::kDistrictHash - game::kDistrictName && name[n] >= 0x20 && name[n] < 0x7f) n++;
+        std::memcpy(out, name, n);
+        out[n] = 0;
+        return n > 0;
     }
-    return named > 0;
+    return false;
 }
 
-// 16 bytes a group, "+off: hex", as many groups as fit in one log line.
-void log_hex(const char *what, const void *p, const uint8_t *bytes, size_t n) {
-    char line[900];
-    for (size_t at = 0; at < n;) {
-        int k = std::snprintf(line, sizeof line, "sonar: %s %p +%lx:", what, p, static_cast<unsigned long>(at));
-        for (size_t g = 0; g < 3 && at < n; g++, at += 16) {
-            k += std::snprintf(line + k, sizeof line - k, " |");
-            for (size_t i = 0; i < 16 && at + i < n; i++)
-                k += std::snprintf(line + k, sizeof line - k, i % 4 ? "%02x" : " %02x", bytes[at + i]);
-        }
-        log::write("%s", line);
+// The runtime record whose hash is `hash`: its level and XP into `d`, the map's way. False when none is.
+bool read_level(const uint8_t *runtime, uint32_t hash, District &d) {
+    const uint8_t *array = nullptr, *costs = nullptr;
+    uint32_t count = 0, cost_count = 0;
+    if (!field(runtime, game::kRuntimeArray, array) || !field(runtime, game::kRuntimeCount, count) || count == 0 ||
+        !field(runtime, game::kRuntimeCosts, costs) || !field(runtime, game::kRuntimeCostCount, cost_count))
+        return false;
+    if (count > kMaxDistricts) count = kMaxDistricts;
+    if (cost_count > kMaxCosts) cost_count = kMaxCosts;
+    if (!mem::copy(array, g_records, count * game::kRuntimeStride) || !mem::copy(costs, g_costs, cost_count * 4))
+        return false;
+    for (uint32_t i = 0; i < count; i++) {
+        const uint8_t *r = g_records + i * game::kRuntimeStride;
+        uint32_t h, max_level, levels, xp;
+        std::memcpy(&h, r + game::kRecordHash, 4);
+        if (h != hash) continue;
+        std::memcpy(&max_level, r + game::kRecordMaxLevel, 4);
+        std::memcpy(&levels, r + game::kRecordLevels, 4);
+        std::memcpy(&xp, r + game::kRecordXp, 4);
+        if (levels > cost_count || max_level > 100) return false;
+        uint32_t spent = 0;
+        for (uint32_t k = 0; k < levels; k++) spent += g_costs[k];
+        d.level = static_cast<int>(levels) + 1;
+        d.max_level = static_cast<int>(max_level);
+        d.xp = xp >= spent ? static_cast<int>(xp - spent) : 0;
+        d.cost = levels + 1 < max_level && levels < cost_count ? static_cast<int>(g_costs[levels]) : 0;
+        return true;
     }
+    return false;
 }
 
-// Up to `cap` bytes at p (0x2000 at most) to <basename>.<name>-<call>.bin, for reading offline.
-void snap(const char *name, const void *p, size_t cap, LONG n) {
-    size_t len = mem::readable_run(p);
-    if (len > cap) len = cap;
-    static uint8_t buf[0x2000];
-    if (len > sizeof buf) len = sizeof buf;
-    if (!len || !mem::copy(p, buf, len)) {
-        log::write("sonar: %s %p unreadable", name, p);
-        return;
-    }
-    wchar_t suffix[64];
-    wsprintfW(suffix, L".%hs-%ld.bin", name, static_cast<long>(n));
-    const std::wstring path = log::path(suffix);
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteFile(h, buf, static_cast<DWORD>(len), &written, nullptr);
-    CloseHandle(h);
-    log::write("sonar: %s %p: %lu bytes to %ls", name, p, static_cast<unsigned long>(written), path.c_str());
-}
-
-// The runtime's own bytes, and 0x400 at each heap pointer among its first 0x30: it is small and points elsewhere.
-void snap_runtime(const uint8_t *runtime, LONG n) {
-    snap("runtime", runtime, 0x30, n);
-    if (!mem::readable(runtime, 0x30)) return;
-    for (int i = 0; i < 6; i++) {
-        const void *q = reinterpret_cast<const void *const *>(runtime)[i];
-        if (mem::readable(q, 16) && !mem::is_code(q)) {
-            char name[24];
-            wsprintfA(name, "runtime%x", i * 8);
-            snap(name, q, 0x400, n);
-        }
-    }
-}
-
-// Which dwords of the runtime's first kRuntimeCmp bytes moved since the last look, up to 24 in one line.
-void log_runtime_moves(const uint8_t *runtime) {
-    uint8_t now[kRuntimeCmp];
-    size_t len = mem::readable_run(runtime);
-    if (len > kRuntimeCmp) len = kRuntimeCmp;
-    if (!len || !mem::copy(runtime, now, len)) return;
-    if (len == g_runtime_len) {
-        char line[900];
-        int k = 0, moved = 0;
-        for (size_t at = 0; at + 4 <= len; at += 4) {
-            uint32_t was, is;
-            std::memcpy(&was, g_runtime + at, 4);
-            std::memcpy(&is, now + at, 4);
-            if (was == is) continue;
-            if (moved++ < 24)
-                k += std::snprintf(line + k, sizeof line - k, " +%lx %u->%u", static_cast<unsigned long>(at),
-                                   static_cast<unsigned>(was), static_cast<unsigned>(is));
-        }
-        if (moved) log::write("sonar: runtime moved, %d dwords:%s", moved, line);
-    }
-    std::memcpy(g_runtime, now, len);
-    g_runtime_len = len;
+// One line when the district, its level or the active list's other hashes change: the section is still a lead.
+void log_change(const District &d, uint32_t hash, uint32_t entries, LONG n) {
+    uint32_t others[kMaxActive] = {};
+    for (uint32_t i = 0; i < entries; i++)
+        std::memcpy(&others[i], g_active + i * game::kActiveStride + game::kActiveOtherHash, 4);
+    const bool same = d.has == g_logged.has && std::strcmp(d.id, g_logged.id) == 0 && d.level == g_logged.level &&
+                      entries == g_logged_count && std::memcmp(others, g_logged_others, sizeof others) == 0;
+    if (same) return;
+    char list[160] = "";
+    for (uint32_t i = 0, k = 0; i < entries && k + 12 < sizeof list; i++)
+        k += wsprintfA(list + k, " %08lx", static_cast<unsigned long>(others[i]));
+    if (d.has)
+        log::write("sonar: district %s (%08lx) lvl %d of %d, %d/%d; active list %lu:%s (call %ld)", d.id,
+                   static_cast<unsigned long>(hash), d.level, d.max_level, d.xp, d.cost,
+                   static_cast<unsigned long>(entries), list, static_cast<long>(n));
+    else
+        log::write("sonar: no district (hash %08lx, active list %lu:%s) (call %ld)", static_cast<unsigned long>(hash),
+                   static_cast<unsigned long>(entries), list, static_cast<long>(n));
+    g_logged = d;
+    std::memcpy(g_logged_others, others, sizeof others);
+    g_logged_count = entries;
 }
 
 void look(void *ctx, LONG n) {
-    auto *at = static_cast<uint8_t *>(ctx) + game::kEnvTray;
-    if (!mem::readable(at, 8)) return;
-    auto *tray = *reinterpret_cast<uint8_t **>(at);
-    if (!mem::readable(tray, game::kSonarSlots * 8)) return;
-    const auto *db = *reinterpret_cast<const uint8_t **>(tray + game::kSonarDistrictDatabase);
-    const auto *runtime = *reinterpret_cast<const uint8_t **>(tray + game::kSonarDistrictRuntime);
-    const auto *active = *reinterpret_cast<const uint8_t **>(tray + game::kSonarActiveDistrict);
-    if (n == 1) {
-        runner::log_env_tray("sonar", ctx, game::kSonarSlots);
-        if (!log_catalogue(db)) {
-            g_bad = true;
-            log::write("sonar: slot +%x is not the catalogue - the tray model is wrong here, reading stops",
-                       static_cast<unsigned>(game::kSonarDistrictDatabase));
-            return;
-        }
+    const uint8_t *tray = nullptr;
+    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) return;
+    const uint8_t *db = nullptr, *runtime = nullptr, *active = nullptr;
+    if (!field(tray, game::kSonarDistrictDatabase, db) || !field(tray, game::kSonarDistrictRuntime, runtime) ||
+        !field(tray, game::kSonarActiveDistrict, active))
+        return;
+    District d;
+    uint32_t hash = 0;
+    const uint32_t entries = read_active(active, &hash);
+    if (entries && read_name(db, hash, d.id, sizeof d.id)) {
+        d.has = true;
+        read_level(runtime, hash, d);  // a name without a record is drawn without a level
     }
-    uint8_t now[sizeof g_active];
-    if (!mem::copy(active, now, sizeof now)) return;
-    if (n == 1 || std::memcmp(now, g_active, sizeof now) != 0) {
-        log_hex("ActiveDistrict", active, now, sizeof now);
-        std::memcpy(g_active, now, sizeof now);
-        snap_runtime(runtime, n);
-        log_runtime_moves(runtime);
-    } else if (n % 300 == 0) {
-        log_runtime_moves(runtime);
-    }
+    log_change(d, hash, entries, n);
+    AcquireSRWLockExclusive(&g_lock);
+    g_district = d;
+    ReleaseSRWLockExclusive(&g_lock);
 }
 
 void hk_sonar(void *a, void *b, void *c, void *d) {
@@ -191,16 +156,10 @@ void hk_sonar(void *a, void *b, void *c, void *d) {
     LONG n = InterlockedIncrement(&g_calls);
     if (!lifecycle::stopping) {
         if (n == 1) {
-            g_rate_t0 = GetTickCount64();
-            log::write("sonar: first call tid %lu, a=%p b=%p c=%p", GetCurrentThreadId(), a, b, c);
+            log::write("sonar: first call tid %lu, ctx %p", GetCurrentThreadId(), c);
+            runner::log_env_tray("sonar", c, game::kSonarSlots);
         }
-        if (!g_bad) look(c, n);
-        if (n % 1800 == 0) {
-            const ULONGLONG t = GetTickCount64();
-            log::write("sonar: %ld calls, the last 1800 in %lu ms", static_cast<long>(n),
-                       static_cast<unsigned long>(t - g_rate_t0));
-            g_rate_t0 = t;
-        }
+        if (n % kEvery == 1) look(c, n);
     }
     g_original(a, b, c, d);
     InterlockedDecrement(&g_inflight);
@@ -219,6 +178,12 @@ bool install(HMODULE exe, uintptr_t sonar_offset) {
     log::write("hook on sonar exe+%lx: %s (trampoline %p)", static_cast<unsigned long>(sonar_offset),
                ms == MH_OK ? "enabled" : "FAILED", reinterpret_cast<void *>(g_original));
     return ms == MH_OK;
+}
+
+void district(District &out) {
+    AcquireSRWLockShared(&g_lock);
+    out = g_district;
+    ReleaseSRWLockShared(&g_lock);
 }
 
 long inflight() { return g_inflight; }

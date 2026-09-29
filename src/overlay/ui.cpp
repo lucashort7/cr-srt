@@ -4,6 +4,7 @@
 #include "enemies.h"
 #include "game.h"
 #include "hooks/runner.h"
+#include "hooks/sonar.h"
 #include "log.h"
 #include "player.h"
 
@@ -96,6 +97,24 @@ float stats(ImVec2 at, float px, const player::State &p, bool stale) {
                       tenth(p.total));
     text_at(ImVec2(at.x, at.y + 3.0f * step), px, text);
     return at.y + 3.0f * step + std::floor(px * 1.8f);
+}
+
+// Under the stats block: the district the sonar last resolved, as the map names its level and bar. It is held while the
+// game is paused, where it cannot change, so the map can be read against it. Returns the y below it.
+float zone(ImVec2 at, float px) {
+    sonar::District d;
+    sonar::district(d);
+    char text[96];
+    if (!d.has)
+        std::snprintf(text, sizeof text, "zone  --");
+    else if (d.level == 0)
+        std::snprintf(text, sizeof text, "zone  %s", d.id);
+    else if (d.cost == 0)
+        std::snprintf(text, sizeof text, "zone  %s \xC2\xB7 lvl %d (max)", d.id, d.level);
+    else
+        std::snprintf(text, sizeof text, "zone  %s \xC2\xB7 lvl %d (%d/%d)", d.id, d.level, d.xp, d.cost);
+    text_at(at, px, text);
+    return at.y + std::floor(px * 1.8f);
 }
 
 void read_ini(long frame) {
@@ -195,7 +214,7 @@ void draw(float width, float height, float px, long frame) {
     // drawn, and one first seen mid-game re-uploads the atlas with an unbounded wait on the game's queue; measured here
     // they bake with the atlas's first upload, and afterwards this is a cache lookup.
     static const char glyphs[] = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
-                                 "abcdefghijklmnopqrstuvwxyz{|}~";
+                                 "abcdefghijklmnopqrstuvwxyz{|}~\xC2\xB7";
     for (float size : {px, panel_px(px), number_px(px)}) ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, glyphs);
     injected_line(width, height, px);
 
@@ -204,7 +223,7 @@ void draw(float width, float height, float px, long frame) {
     runner::player_state(p, &calls);
     const bool stale = runner_stale(calls, frame);
     const ImVec2 at(std::floor(width * 0.02f), std::floor(height * 0.30f));  // left edge, room below for the panel
-    const float below = stats(at, px, p, stale);
+    const float below = zone(ImVec2(at.x, stats(at, px, p, stale) - std::floor(px * 0.55f)), px);
     enemy_panel(ImVec2(at.x, below), px, stale, frame);
 }
 
