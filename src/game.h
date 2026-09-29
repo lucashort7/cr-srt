@@ -98,8 +98,9 @@ inline constexpr Faction kFactions[] = {
     {0x8c4b1ad8, "neutral"},
     {0x20408545, "explosives"},
     {0x175869f5, "hedron"},
-    // The player's summons, named by us: no candidate hashed to these (2026-09-29).
-    {0x538682a2, "ally:mold"},
+    // The player's summons, named by us: no candidate hashed to these (2026-09-29). The first is every companion,
+    // Growth's tower and the Hedron sphere alike, and the kind tells which; the Volatile Anomaly has its own.
+    {0x538682a2, "ally"},
     {0xeae53489, "ally:anomaly"},
 };
 
@@ -155,6 +156,9 @@ inline constexpr Kind kKinds[] = {
     {0x504daed11f390c7cull, "sniper_overshield", true},
     {0x22a6ec1be4b02ed0ull, "drifter_charge", true},
     {0xb5c87403f8aa4595ull, "flux_horizontal_saw", true},
+    // The player's companions, named by us from what Lucas sees: no name hashed to these.
+    {0xdc8de3fce9d33935ull, "growth", true},
+    {0xa418d99ab84ff184ull, "hedron", true},
 };
 #undef CRSRT_KIND
 static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
