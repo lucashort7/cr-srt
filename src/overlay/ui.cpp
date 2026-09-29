@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hooks/runner.h"
 #include "hooks/sonar.h"
+#include "memory.h"
 #include "log.h"
 #include "player.h"
 
@@ -202,6 +203,54 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
     }
 }
 
+// The camera's view-projection matrix, or false. The global is read as the object, RadarPlus's way, and kept once the
+// player's own position projects in front of the camera and on screen: in third person it has to.
+bool view_proj(float m[16], const player::State &p) {
+    static const uint8_t *const matrix =
+        reinterpret_cast<const uint8_t *>(GetModuleHandleW(game::kExeName)) + game::kCamera + game::kCameraViewProj;
+    static int verdict;  // 0 not yet, 1 kept, -1 refused
+    if (verdict < 0 || !mem::copy(matrix, m, 16 * sizeof(float))) return false;
+    if (verdict > 0) return true;
+    if (!p.has_position) return false;
+    const float x = p.position[0], y = p.position[1] + 1.0f, z = p.position[2];
+    const float cx = x * m[0] + y * m[4] + z * m[8] + m[12];
+    const float cy = x * m[1] + y * m[5] + z * m[9] + m[13];
+    const float cw = x * m[3] + y * m[7] + z * m[11] + m[15];
+    const bool on = cw > 1e-4f && std::fabs(cx / cw) < 1.0f && std::fabs(cy / cw) < 1.0f;
+    char row[200];
+    std::snprintf(row, sizeof row, "player at clip %g %g w %g -> screen %.3f %.3f", cx, cy, cw, cw ? cx / cw : 0.0f,
+                  cw ? cy / cw : 0.0f);
+    log::write("labels: matrix at %p: %s - %s", matrix, row, on ? "kept" : "refused, no labels");
+    verdict = on ? 1 : -1;
+    return on;
+}
+
+// Under each enemy the panel shows, its faction and kind at its feet: the walk's position through the camera.
+void labels(float w, float h, float px, const player::State &p, bool stale) {
+    float m[16];
+    if (stale || !view_proj(m, p)) return;
+    const float lpx = number_px(px);
+    char text[48];
+    for (int i = 0; i < g_list.count; i++) {
+        const enemies::Enemy &e = g_list.rows[i];
+        if (!shown(e)) continue;
+        const float x = e.position[0], y = e.position[1], z = e.position[2];
+        const float cx = x * m[0] + y * m[4] + z * m[8] + m[12];
+        const float cy = x * m[1] + y * m[5] + z * m[9] + m[13];
+        const float cw = x * m[3] + y * m[7] + z * m[11] + m[15];
+        if (!(cw > 1e-4f)) continue;  // behind the camera
+        const float nx = cx / cw, ny = cy / cw;
+        if (std::fabs(nx) > 1.0f || std::fabs(ny) > 1.0f) continue;
+        char faction[16];
+        faction_label(e.faction, faction, sizeof faction);
+        std::snprintf(text, sizeof text, "%s %02x%02x%02x%02x%02x%02x%02x%02x", faction, e.kind[0], e.kind[1],
+                      e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7]);
+        const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(lpx, FLT_MAX, 0.0f, text);
+        text_at(ImVec2(std::floor((nx + 1.0f) * 0.5f * w - size.x * 0.5f), std::floor((1.0f - ny) * 0.5f * h + lpx * 0.3f)),
+                lpx, text);
+    }
+}
+
 }  // namespace
 
 float font_px(float height) {
@@ -225,6 +274,7 @@ void draw(float width, float height, float px, long frame) {
     const ImVec2 at(std::floor(width * 0.02f), std::floor(height * 0.30f));  // left edge, room below for the panel
     const float below = zone(ImVec2(at.x, stats(at, px, p, stale) - std::floor(px * 0.55f)), px);
     enemy_panel(ImVec2(at.x, below), px, stale, frame);
+    labels(width, height, px, p, stale);
 }
 
 }  // namespace crsrt::ui

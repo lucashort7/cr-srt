@@ -112,6 +112,12 @@ inline constexpr char kRunnerName[] =
     "ecs::system::getName<void __cdecl heron::healing::regeneration_update::system(";
 inline constexpr int32_t kSystemFnSlot = 0x140;
 
+// --- The camera, as RadarPlus reads it (crmods/RadarPlus, its log and projectWorld): the view-projection matrix at
+// +0x1c8 of the camera at exe+0x5c2c020, 16 floats, clip = [x y z 1] * M, screen X = (x+1)/2*W, Y = (1-y)/2*H. The
+// 2026-09-24 build only; whether the global is the camera or a pointer to it is measured at the first draw.
+inline constexpr uintptr_t kCamera = 0x5c2c020;
+inline constexpr uintptr_t kCameraViewProj = 0x1c8;
+
 // --- A system's envs. The runner's third argument holds at +0x58 a tray of pointers, one 8-byte slot per parameter of
 // the system's signature, in its order: regeneration_update's Requests, FixedTime and LuaEvents sit in slots 2-4 (its
 // decompile, ghidra/out/runner.txt), crrank reads update_player_marker's DistrictDatabase and ActiveDistrict in 2-3.
