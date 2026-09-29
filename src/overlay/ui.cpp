@@ -7,6 +7,7 @@
 #include "hooks/sonar.h"
 #include "log.h"
 #include "memory.h"
+#include "names.h"
 #include "player.h"
 
 #include <windows.h>
@@ -134,7 +135,7 @@ void read_ini(long frame) {
 
 // "hiss", or the hash's first four digits.
 void faction_label(uint32_t hash, char *out, size_t cap) {
-    for (const auto &f : game::kFactions)
+    for (const auto &f : names::kFactions)
         if (f.hash == hash) {
             std::snprintf(out, cap, "%s", f.name);
             return;
@@ -146,9 +147,9 @@ void faction_label(uint32_t hash, char *out, size_t cap) {
 void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
     uint64_t k = 0;
     std::memcpy(&k, kind, sizeof k);
-    for (const auto &n : game::kKinds)
+    for (const auto &n : names::kKinds)
         if (n.hash == k) {
-            std::snprintf(out, cap, "%s%s", n.name, n.guess ? "?" : "");
+            std::snprintf(out, cap, "%s%s", n.name, n.source == names::Source::Paired ? "?" : "");
             return;
         }
     if (whole)
@@ -211,7 +212,7 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
         if (shielded) bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
         const float bar_y = y + shield_h + 1.0f;
         // An ally keeps its place in the list and takes the cyan the game draws over its own allies.
-        const ImU32 fill = game::is_ally(e.faction) ? IM_COL32(28, 255, 255, 230) : IM_COL32(210, 50, 40, 230);
+        const ImU32 fill = names::is_ally(e.faction) ? IM_COL32(28, 255, 255, 230) : IM_COL32(210, 50, 40, 230);
         bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, fill);
         const int hp = game::points(e.fraction, e.max);
         if (shielded)

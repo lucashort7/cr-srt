@@ -1,5 +1,6 @@
 // game.h — everything cr-srt knows about CONTROLResonant.exe, in one file: a game patch changes this file and the
-// cache, nothing else. Offsets are exe-relative; hashes are FNV-1a 32 of a component type's full name.
+// cache, nothing else. Offsets are exe-relative; hashes are FNV-1a 32 of a component type's full name. What a
+// faction or a kind is called is names.h, which grows as the game is played and not when it is patched.
 #pragma once
 
 #include <cmath>
@@ -85,86 +86,6 @@ inline constexpr uint32_t kMovementSpeed = 0x20;  // metres a second, ~2 ticks l
 // of. Its neighbour MovementRequest (0xee6701db) holds the displacement per tick at +0x10 and a copy at +0x20.
 inline constexpr uint32_t kMovementState = 0xe6b9cb0b;  // coregame::component::MovementState
 inline constexpr uint32_t kMovementStateRowSize = 0x40;
-
-// FactionData's names, found by hashing candidates (2026-09-28); an enemy of another faction shows its hash.
-struct Faction {
-    uint32_t hash;
-    const char *name;
-};
-inline constexpr uint32_t kFactionAlly = 0x538682a2;
-inline constexpr uint32_t kFactionAnomaly = 0xeae53489;
-inline constexpr Faction kFactions[] = {
-    {0x4aac31a8, "hiss"},
-    {0x1d82b4ed, "mold"},
-    {0x2c99c300, "player"},
-    {0x8c4b1ad8, "neutral"},
-    {0x20408545, "explosives"},
-    {0x175869f5, "hedron"},
-    // The player's summons, named by us: no candidate hashed to these (2026-09-29). The first is every companion,
-    // Growth's tower and the Hedron sphere alike, and the kind tells which; the Volatile Anomaly has its own.
-    {kFactionAlly, "ally"},
-    {kFactionAnomaly, "ally:anomaly"},
-};
-constexpr bool is_ally(uint32_t faction) { return faction == kFactionAlly || faction == kFactionAnomaly; }
-
-// --- A kind's name. The kind at SpawnedNPC+0x30 is FNV-1a 64 of the lowercase internal name, read little-endian; the
-// names come from the encounter database in the heap (control-resonant-modding/tools/kindnames.py, 2026-09-29). An
-// entry hashed from its name is certain and costs nothing when the kind never shows up. The `guess` entries are kinds
-// whose hash matched no name: the database pairs them with the name beside them, which fits what they are.
-constexpr uint64_t fnv1a64(const char *s) {
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (; *s; s++) h = (h ^ static_cast<uint8_t>(*s)) * 0x100000001b3ull;
-    return h;
-}
-struct Kind {
-    uint64_t hash;
-    const char *name;
-    bool guess;
-};
-#define CRSRT_KIND(n) {fnv1a64(n), n, false}
-inline constexpr Kind kKinds[] = {
-    CRSRT_KIND("artillery"),
-    CRSRT_KIND("blob"),
-    CRSRT_KIND("brute"),
-    CRSRT_KIND("enraged"),
-    CRSRT_KIND("glider"),
-    CRSRT_KIND("healer"),
-    CRSRT_KIND("hermit"),
-    CRSRT_KIND("master"),
-    CRSRT_KIND("plague"),
-    CRSRT_KIND("pursuer"),
-    CRSRT_KIND("ranger"),
-    CRSRT_KIND("sniper"),
-    CRSRT_KIND("soldier"),
-    CRSRT_KIND("spitter"),
-    CRSRT_KIND("spore"),
-    CRSRT_KIND("leviathan"),
-    // In the database, hash unmet so far.
-    CRSRT_KIND("brute_overshield"),
-    CRSRT_KIND("brute_arcs_friendly"),
-    CRSRT_KIND("pursuer_friendly"),
-    CRSRT_KIND("healer_overshield"),
-    CRSRT_KIND("glider_overshield"),
-    CRSRT_KIND("mini_blob"),
-    CRSRT_KIND("miniboss_blob"),
-    CRSRT_KIND("miniboss_glider_overshield"),
-    CRSRT_KIND("miniboss_master"),
-    CRSRT_KIND("flux_horizontal_saw_gap"),
-    // Paired by the database only.
-    {0xc9126a04f8f5aa92ull, "miniboss_leviathan", true},
-    {0x0ffb453d3c75872aull, "moldbag_melee", true},
-    {0xc2d353a9fa6fce18ull, "moldbag_shotgun", true},
-    {0x0ae36649c3edfaa6ull, "moldbag_rocketlauncher", true},
-    {0x0c8622242419f585ull, "brute_arcs", true},
-    {0x504daed11f390c7cull, "sniper_overshield", true},
-    {0x22a6ec1be4b02ed0ull, "drifter_charge", true},
-    {0xb5c87403f8aa4595ull, "flux_horizontal_saw", true},
-    // The player's companions, named by us from what Lucas sees: no name hashed to these.
-    {0xdc8de3fce9d33935ull, "growth", true},
-    {0xa418d99ab84ff184ull, "hedron", true},
-};
-#undef CRSRT_KIND
-static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
 
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
 // get_player is one of 14 sibling instantiations; the player's is the one whose lookup site carries kPlayerTag.
