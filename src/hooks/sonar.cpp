@@ -37,7 +37,7 @@ uint32_t g_costs[kMaxCosts];
 uint8_t g_active[kMaxActive * game::kActiveStride];
 District g_logged;
 uint32_t g_logged_others[kMaxActive];
-uint32_t g_logged_count;
+uint32_t g_logged_count = ~0u;  // matches no list: the first look is always logged
 
 template <typename T>
 bool field(const uint8_t *base, uintptr_t off, T &out) {
@@ -131,13 +131,25 @@ void log_change(const District &d, uint32_t hash, uint32_t entries, LONG n) {
     g_logged_count = entries;
 }
 
+// Why a look stopped short, logged once per change: 0 none, 1 the tray, 2 its slots.
+int g_short_said = -1;
+
+void short_of(int why, const void *ctx, LONG n) {
+    if (why == g_short_said) return;
+    g_short_said = why;
+    if (why) log::write("sonar: look stopped at the %s (ctx %p, call %ld)", why == 1 ? "tray" : "tray's slots", ctx,
+                        static_cast<long>(n));
+    else log::write("sonar: look reads again (call %ld)", static_cast<long>(n));
+}
+
 void look(void *ctx, LONG n) {
     const uint8_t *tray = nullptr;
-    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) return;
+    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) return short_of(1, ctx, n);
     const uint8_t *db = nullptr, *runtime = nullptr, *active = nullptr;
     if (!field(tray, game::kSonarDistrictDatabase, db) || !field(tray, game::kSonarDistrictRuntime, runtime) ||
         !field(tray, game::kSonarActiveDistrict, active))
-        return;
+        return short_of(2, ctx, n);
+    short_of(0, ctx, n);
     District d;
     uint32_t hash = 0;
     const uint32_t entries = read_active(active, &hash);
@@ -160,6 +172,7 @@ void hk_sonar(void *a, void *b, void *c, void *d) {
             runner::log_env_tray("sonar", c, game::kSonarSlots);
         }
         if (n % kEvery == 1) look(c, n);
+        if (n % 1800 == 0) log::write("sonar: %ld calls", static_cast<long>(n));  // ~every minute: still called
     }
     g_original(a, b, c, d);
     InterlockedDecrement(&g_inflight);
