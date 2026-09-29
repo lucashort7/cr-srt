@@ -43,9 +43,9 @@ bool chunk_is_at(const uint8_t *world, int64_t index, uint64_t chunk) {
 bool archetype(const uint8_t *world, int64_t index, Archetype &out) {
     const uint8_t *entry = world + 8 + (index + game::kTypeEntryBias) * 32;
     if (!mem::readable(entry, 32)) return false;
-    auto *hashes = *reinterpret_cast<const uint32_t *const *>(entry + 8);
+    const auto *hashes = *reinterpret_cast<const uint32_t *const *>(entry + 8);
     uint32_t count = *reinterpret_cast<const uint32_t *>(entry + 0x1c);
-    auto *offsets = *reinterpret_cast<const uint32_t *const *>(world + 8 + index * 32 + game::kOffsetsBase);
+    const auto *offsets = *reinterpret_cast<const uint32_t *const *>(world + 8 + index * 32 + game::kOffsetsBase);
     if (count > 4096 || !mem::readable(hashes, count * 4) || !mem::readable(offsets, count * 4)) return false;
     out = {index, hashes, offsets, count};
     return true;

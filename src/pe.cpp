@@ -4,8 +4,9 @@
 namespace crsrt::pe {
 
 std::span<const IMAGE_SECTION_HEADER> sections(HMODULE module) {
-    auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(module);
-    auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS64 *>(reinterpret_cast<const uint8_t *>(module) + dos->e_lfanew);
+    const auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(module);
+    const auto *nt =
+        reinterpret_cast<const IMAGE_NT_HEADERS64 *>(reinterpret_cast<const uint8_t *>(module) + dos->e_lfanew);
     return {IMAGE_FIRST_SECTION(nt), nt->FileHeader.NumberOfSections};
 }
 

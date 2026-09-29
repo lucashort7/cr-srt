@@ -35,11 +35,12 @@ uint64_t hex64(const char *s, const char **end) {
 }  // namespace
 
 uint64_t fingerprint(HMODULE exe) {
-    auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(exe);
-    auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS64 *>(reinterpret_cast<const uint8_t *>(exe) + dos->e_lfanew);
+    const auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(exe);
+    const auto *nt =
+        reinterpret_cast<const IMAGE_NT_HEADERS64 *>(reinterpret_cast<const uint8_t *>(exe) + dos->e_lfanew);
     const uint32_t fields[3] = {nt->FileHeader.TimeDateStamp, nt->OptionalHeader.SizeOfImage,
                                 nt->OptionalHeader.CheckSum};
-    auto *p = reinterpret_cast<const uint8_t *>(fields);
+    const auto *p = reinterpret_cast<const uint8_t *>(fields);
     uint64_t h = 0xcbf29ce484222325ULL;
     // The hash walks the three fields byte by byte, so sizeof over the array is the count meant.
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
