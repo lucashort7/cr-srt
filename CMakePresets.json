@@ -1,0 +1,21 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "mingw",
+      "displayName": "MinGW-w64 g++ (Release)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "C:/MinGW/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/MinGW/bin/g++.exe",
+        "CMAKE_AR": "C:/MinGW/bin/gcc-ar.exe",
+        "CMAKE_RANLIB": "C:/MinGW/bin/gcc-ranlib.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mingw", "configurePreset": "mingw" }
+  ]
+}

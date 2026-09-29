@@ -12,8 +12,9 @@ if /i "%~1"=="probe" (
   set "OUT=%~2"
 )
 if "%OUT%"=="" set "OUT=%DLL%-dev.dll"
-rem gcc-ar and gcc-ranlib, not ar: bare ar scans lib\bfd-plugins, loads libdep.a and pops a Bad Image dialog.
-if not exist build\build.ninja cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_AR=C:/MinGW/bin/gcc-ar.exe -DCMAKE_RANLIB=C:/MinGW/bin/gcc-ranlib.exe || goto :fail
+rem The toolchain lives in CMakePresets.json, which VS Code's CMake Tools also reads. gcc-ar and gcc-ranlib there,
+rem not ar: bare ar scans lib\bfd-plugins, loads libdep.a and pops a Bad Image dialog.
+if not exist build\build.ninja cmake --preset mingw || goto :fail
 cmake --build build || goto :fail
 copy /y build\%DLL%.dll "%OUT%" >nul || goto :fail
 echo built %OUT%

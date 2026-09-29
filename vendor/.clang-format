@@ -1,0 +1,3 @@
+# Vendored code keeps its upstream form. SortIncludes too: DisableFormat alone still reorders includes.
+DisableFormat: true
+SortIncludes: Never

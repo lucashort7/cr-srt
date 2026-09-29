@@ -1,0 +1,34 @@
+# cr-srt reads a game's memory: raw pointers, reinterpret_cast, pointer arithmetic, offsets and hashes as literals
+# are the job, so the checks against them are off. What stays hunts bugs.
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-signed-bitwise,
+  -bugprone-throwing-static-initialization,
+  performance-*,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-slicing,
+  modernize-deprecated-headers,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-using,
+  readability-*,
+  -readability-avoid-nested-conditional-operator,
+  -readability-braces-around-statements,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+  -readability-isolate-declaration,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -readability-named-parameter,
+  -readability-trailing-comma,
+  -readability-uppercase-literal-suffix
+HeaderFilterRegex: '.*[\\/]src[\\/].*'
+# The build is MinGW g++; without a target clang-tidy assumes MSVC and parses the Windows SDK's headers instead.
+ExtraArgs: ['--target=x86_64-w64-mingw32', '--sysroot=C:/MinGW']

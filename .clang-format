@@ -1,0 +1,8 @@
+# Google, bent toward how the code was already written: 4 spaces, 120 columns, `T *p`, include blocks kept as grouped.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+PointerAlignment: Right
+DerivePointerAlignment: false
+IncludeBlocks: Preserve
+AllowShortCaseLabelsOnASingleLine: true
