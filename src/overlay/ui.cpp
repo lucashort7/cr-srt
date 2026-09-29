@@ -13,6 +13,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 
 #include "imgui.h"
@@ -203,26 +204,36 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
     }
 }
 
-// The camera's view-projection matrix, or false. The global is read as the object, RadarPlus's way, and kept once the
-// player's own position projects in front of the camera and on screen: in third person it has to.
+// The camera's view-projection matrix, or false. It is 16 doubles, read twice until both reads agree (a torn copy is
+// refused, RadarPlus's way), and refused when not finite, too large, or with a zero w column. The first one kept is
+// logged with the player's position through it, the eyes' check.
 bool view_proj(float m[16], const player::State &p) {
     static const uint8_t *const matrix =
         reinterpret_cast<const uint8_t *>(GetModuleHandleW(game::kExeName)) + game::kCamera + game::kCameraViewProj;
-    static int verdict;  // 0 not yet, 1 kept, -1 refused
-    if (verdict < 0 || !mem::copy(matrix, m, 16 * sizeof(float))) return false;
-    if (verdict > 0) return true;
-    if (!p.has_position) return false;
-    const float x = p.position[0], y = p.position[1] + 1.0f, z = p.position[2];
-    const float cx = x * m[0] + y * m[4] + z * m[8] + m[12];
-    const float cy = x * m[1] + y * m[5] + z * m[9] + m[13];
-    const float cw = x * m[3] + y * m[7] + z * m[11] + m[15];
-    const bool on = cw > 1e-4f && std::fabs(cx / cw) < 1.0f && std::fabs(cy / cw) < 1.0f;
-    char row[200];
-    std::snprintf(row, sizeof row, "player at clip %g %g w %g -> screen %.3f %.3f", cx, cy, cw, cw ? cx / cw : 0.0f,
-                  cw ? cy / cw : 0.0f);
-    log::write("labels: matrix at %p: %s - %s", matrix, row, on ? "kept" : "refused, no labels");
-    verdict = on ? 1 : -1;
-    return on;
+    static bool logged;
+    double a[16], b[16];
+    int tries = 0;
+    do {
+        if (!mem::copy(matrix, a, sizeof a) || !mem::copy(matrix, b, sizeof b)) return false;
+    } while (std::memcmp(a, b, sizeof a) != 0 && ++tries < 4);
+    if (tries == 4) return false;
+    double w = 0.0;
+    for (int i = 0; i < 16; i++) {
+        if (!std::isfinite(a[i]) || std::fabs(a[i]) > 1e6) return false;
+        m[i] = static_cast<float>(a[i]);
+    }
+    for (int i = 3; i < 16; i += 4) w += std::fabs(a[i]);
+    if (!(w > 0.0)) return false;
+    if (!logged && p.has_position) {
+        logged = true;
+        const float x = p.position[0], y = p.position[1] + 1.0f, z = p.position[2];
+        const float cx = x * m[0] + y * m[4] + z * m[8] + m[12];
+        const float cy = x * m[1] + y * m[5] + z * m[9] + m[13];
+        const float cw = x * m[3] + y * m[7] + z * m[11] + m[15];
+        log::write("labels: matrix at %p kept: player at clip %g %g w %g -> screen %.3f %.3f", matrix, cx, cy, cw,
+                   cw ? cx / cw : 0.0f, cw ? cy / cw : 0.0f);
+    }
+    return true;
 }
 
 // Under each enemy the panel shows, its faction and kind at its feet: the walk's position through the camera.

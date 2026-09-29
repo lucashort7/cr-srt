@@ -113,8 +113,8 @@ inline constexpr char kRunnerName[] =
 inline constexpr int32_t kSystemFnSlot = 0x140;
 
 // --- The camera, as RadarPlus reads it (crmods/RadarPlus, its log and projectWorld): the view-projection matrix at
-// +0x1c8 of the camera at exe+0x5c2c020, 16 floats, clip = [x y z 1] * M, screen X = (x+1)/2*W, Y = (1-y)/2*H. The
-// 2026-09-24 build only; whether the global is the camera or a pointer to it is measured at the first draw.
+// +0x1c8 of the camera at exe+0x5c2c020, 16 doubles, clip = [x y z 1] * M, screen X = (x+1)/2*W, Y = (1-y)/2*H. The
+// global is the camera itself: its getter is `lea rax,[camera]; ret`. The 2026-09-24 build only.
 inline constexpr uintptr_t kCamera = 0x5c2c020;
 inline constexpr uintptr_t kCameraViewProj = 0x1c8;
 
