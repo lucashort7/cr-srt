@@ -53,7 +53,8 @@ DWORD WINAPI unloader(LPVOID) {
         if (ms != MH_OK) ExitThread(0);
         // A thread that jumped in before the disable counts itself within a few instructions; the render thread can
         // then sit inside the original Present for a frame or more (vsync, a minimized window) and return into our
-        // hook. With the hooks off nothing new enters, so the wait has no ceiling; it ends on a zero read after a sleep.
+        // hook. With the hooks off nothing new enters, so the wait has no ceiling; it ends on a zero read after a
+        // sleep.
         int waited = 0;
         for (;;) {
             Sleep(200);
@@ -62,9 +63,10 @@ DWORD WINAPI unloader(LPVOID) {
                 sonar::inflight() == 0)
                 break;
             if (waited == 2000)
-                log::write("unload: %ld present / %ld runner / %ld damage / %ld sonar call(s) still in flight after 2 s, "
-                           "waiting",
-                           present::inflight(), runner::inflight(), damage::inflight(), sonar::inflight());
+                log::write(
+                    "unload: %ld present / %ld runner / %ld damage / %ld sonar call(s) still in flight after 2 s, "
+                    "waiting",
+                    present::inflight(), runner::inflight(), damage::inflight(), sonar::inflight());
         }
         log::write("unload: no call in flight after %d ms", waited);
     }

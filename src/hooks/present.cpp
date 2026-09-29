@@ -30,7 +30,7 @@ DXGI_SWAP_CHAIN_DESC g_last_desc;
 void *direct_queue() {
     auto **global = reinterpret_cast<uint8_t **>(reinterpret_cast<uint8_t *>(g_exe) + game::kDirectQueueGlobal);
     return mem::readable(global, 8) && mem::readable(*global, 0x18) ? *reinterpret_cast<void **>(*global + 0x10)
-                                                                     : nullptr;
+                                                                    : nullptr;
 }
 
 void *device() {
@@ -66,8 +66,8 @@ void dump16(const char *what, const uint8_t *p) {
         mem::owner_of(target, to, sizeof to);
         wsprintfA(tail, " -> jmp %p (%s)", target, to);
     }
-    log::write("%s %p (%s): %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x%s", what,
-               p, own, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14],
+    log::write("%s %p (%s): %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x%s", what, p,
+               own, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14],
                p[15], tail);
 }
 
@@ -81,8 +81,8 @@ void describe(void *self, LONG n) {
     bool moved = sc != g_last_sc || engine_sc != g_last_engine_sc;
     if (!moved && n % 300 != 0) return;
     if (!mem::readable(sc, 8) || !mem::readable(*reinterpret_cast<void **>(sc), 0x68)) {  // through GetDesc, slot 12
-        if (moved) log::write("present #%ld: d3d::SwapChain %p, swapchain %p unreadable", static_cast<long>(n),
-                              engine_sc, sc);
+        if (moved)
+            log::write("present #%ld: d3d::SwapChain %p, swapchain %p unreadable", static_cast<long>(n), engine_sc, sc);
         g_last_sc = sc;
         g_last_engine_sc = engine_sc;
         return;
@@ -97,10 +97,11 @@ void describe(void *self, LONG n) {
     char own_vt[160], own_present[160];
     mem::owner_of(vt, own_vt, sizeof own_vt);
     mem::owner_of(vt[8], own_present, sizeof own_present);
-    log::write("present #%ld tid %lu: self %p d3d::SwapChain %p hwnd %p swapchain %p ffx %p  +62=%u +64=%u +65=%u +68=%u",
-               static_cast<long>(n), GetCurrentThreadId(), self, engine_sc, *reinterpret_cast<void **>(engine_sc),
-               sc, *reinterpret_cast<void **>(engine_sc + 0x10), engine_sc[0x62], engine_sc[0x64], engine_sc[0x65],
-               engine_sc[0x68]);
+    log::write(
+        "present #%ld tid %lu: self %p d3d::SwapChain %p hwnd %p swapchain %p ffx %p  +62=%u +64=%u +65=%u +68=%u",
+        static_cast<long>(n), GetCurrentThreadId(), self, engine_sc, *reinterpret_cast<void **>(engine_sc), sc,
+        *reinterpret_cast<void **>(engine_sc + 0x10), engine_sc[0x62], engine_sc[0x64], engine_sc[0x65],
+        engine_sc[0x68]);
     log::write("  vtable %p (%s), Present %p (%s)", vt, own_vt, vt[8], own_present);
     log::write("  GetDesc hr %08lx: %ux%u format %d buffers %u swapeffect %d flags %x windowed %d",
                static_cast<unsigned long>(hr), d.BufferDesc.Width, d.BufferDesc.Height,

@@ -8,7 +8,8 @@
 
 namespace crsrt::log {
 
-// Remembers this DLL's folder and basename (cr-srt-dev.dll -> "cr-srt-dev"); every other file it keeps is named after it.
+// Remembers this DLL's folder and basename (cr-srt-dev.dll -> "cr-srt-dev"); every other file it keeps is named after
+// it.
 void init(HMODULE self);
 
 // <folder><basename><suffix>, e.g. path(L".cache").

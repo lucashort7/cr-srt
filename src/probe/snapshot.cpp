@@ -20,9 +20,10 @@ namespace {
 // The file, little-endian:
 //   "CRSNAP03" | u64 world | u32 runner calls | u32 slots scanned | u32 world length | the world's first bytes
 //   per archetype whose tables read: u32 'ARCH' | i32 index | u64 chunk | u32 type count | u32 blob length
-//     | 32 bytes of its hashes entry (world+8+(index+0xc22)*32) | 32 bytes of its offsets entry (world+8+index*32+0x18450)
-//     | u32 hashes[count] | u32 offsets[count] | u32 n | u32 first[n]: the array the hashes entry's +0 points at,
-//     n from its +0x18 (a few more than count, unread) | blob: the chunk's first bytes, its header included
+//     | 32 bytes of its hashes entry (world+8+(index+0xc22)*32) | 32 bytes of its offsets entry
+//     (world+8+index*32+0x18450) | u32 hashes[count] | u32 offsets[count] | u32 n | u32 first[n]: the array the hashes
+//     entry's +0 points at, n from its +0x18 (a few more than count, unread) | blob: the chunk's first bytes, its
+//     header included
 //   u32 'END!'
 constexpr uint32_t kArchTag = 0x48435241;  // "ARCH"
 constexpr uint32_t kEndTag = 0x21444e45;   // "END!"
@@ -139,14 +140,15 @@ void take(const uint8_t *world, long calls, const char *why) {
     const std::wstring file = log::path(suffix);
     HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     DWORD written = 0;
-    bool ok = h != INVALID_HANDLE_VALUE && WriteFile(h, g_buf.data(), static_cast<DWORD>(g_buf.size()), &written,
-                                                     nullptr) && written == g_buf.size();
+    bool ok = h != INVALID_HANDLE_VALUE &&
+              WriteFile(h, g_buf.data(), static_cast<DWORD>(g_buf.size()), &written, nullptr) &&
+              written == g_buf.size();
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    log::write("snapshot (%s, call %ld): world %lu KB, %d archetypes, %d chunks with Health (%d capped at 4 MB, "
-               "%d unreadable), %lu KB in %lu ms -> %ls%s",
-               why, calls, static_cast<unsigned long>(world_len / 1024), archs, blobs, capped, lost,
-               static_cast<unsigned long>(g_buf.size() / 1024),
-               GetTickCount() - t0, file.c_str(), ok ? "" : " WRITE FAILED");
+    log::write(
+        "snapshot (%s, call %ld): world %lu KB, %d archetypes, %d chunks with Health (%d capped at 4 MB, "
+        "%d unreadable), %lu KB in %lu ms -> %ls%s",
+        why, calls, static_cast<unsigned long>(world_len / 1024), archs, blobs, capped, lost,
+        static_cast<unsigned long>(g_buf.size() / 1024), GetTickCount() - t0, file.c_str(), ok ? "" : " WRITE FAILED");
     g_buf.clear();
     g_buf.shrink_to_fit();
 }

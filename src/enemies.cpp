@@ -19,15 +19,15 @@ namespace crsrt::enemies {
 
 namespace {
 
-constexpr uint32_t kMaxTypes = 4096;     // an archetype's column count, at most (ecs::archetype's bound)
-constexpr uint32_t kMaxCapacity = 256;   // rows in one chunk of interest, at most; 10 is the most seen
+constexpr uint32_t kMaxTypes = 4096;    // an archetype's column count, at most (ecs::archetype's bound)
+constexpr uint32_t kMaxCapacity = 256;  // rows in one chunk of interest, at most; 10 is the most seen
 constexpr int kMaxFound = 512;
 constexpr int64_t kLogPeriodUs = 20'000'000;  // between two cost lines
 constexpr int64_t kListGapUs = 1'000'000;     // between two logs of the list, and between two reads of the ini
 constexpr int kListLogRows = 8;
-constexpr int64_t kBudgetUs = 1000;     // a walk's budget: what one runner call used to be allowed
+constexpr int64_t kBudgetUs = 1000;  // a walk's budget: what one runner call used to be allowed
 constexpr DWORD kIntervalDefaultMs = 100, kIntervalMinMs = 10, kIntervalMaxMs = 10000;
-constexpr DWORD kStopWaitMs = 5000;     // the unloader's wait for the thread, a walk being milliseconds
+constexpr DWORD kStopWaitMs = 5000;  // the unloader's wait for the thread, a walk being milliseconds
 
 // The walk thread. The runner stores the world and its call count (runner::world, runner::player_state); this thread
 // wakes every [enemies] interval_ms, walks when the runner was called since its last walk, and publishes.
@@ -179,7 +179,7 @@ const Class &class_of(const uint8_t *w, int64_t a) {
             default: break;
         }
     }
-    c.kind = c.health < 0       ? kOther
+    c.kind = c.health < 0        ? kOther
              : c.spawned >= 0    ? kNpc
              : c.attachment >= 0 ? kAttached
              : c.link >= 0       ? kLinked
@@ -308,7 +308,8 @@ void log_combat(uint64_t chunk, const Class &c, long calls, int64_t now) {
         if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
     const uint32_t width = std::min<uint32_t>(next == UINT32_MAX ? 16 : next - column, sizeof g_combat_logged);
     uint8_t row[sizeof g_combat_logged] = {};
-    if (now - g_combat_logged_at < kListGapUs || !mem::copy(reinterpret_cast<const void *>(chunk + column), row, width) ||
+    if (now - g_combat_logged_at < kListGapUs ||
+        !mem::copy(reinterpret_cast<const void *>(chunk + column), row, width) ||
         !std::memcmp(row, g_combat_logged, sizeof row))
         return;
     char hex[sizeof row * 3 + 1];
@@ -427,12 +428,12 @@ void log_new_kinds(long calls) {
         g_kinds_seen[g_kinds_seen_n++] = kind;
         char dist[24];
         tenths(e.distance, dist);
-        log::write("enemies: new kind %02x%02x%02x%02x%02x%02x%02x%02x  %ld max  faction %08lx  lvl %ld  b3c %u  from "
-                   "%lx/%lu  dist %s (call %ld)",
-                   e.kind[0], e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7],
-                   static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level),
-                   e.byte3c, static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation),
-                   dist, calls);
+        log::write(
+            "enemies: new kind %02x%02x%02x%02x%02x%02x%02x%02x  %ld max  faction %08lx  lvl %ld  b3c %u  from "
+            "%lx/%lu  dist %s (call %ld)",
+            e.kind[0], e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7],
+            static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.byte3c,
+            static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist, calls);
     }
 }
 
@@ -443,7 +444,8 @@ float distance_to_player(const float p[3]) {
 }
 
 void log_linked(long calls) {
-    log::write("linked: %d rows with Health and HealthLink, no SpawnedNPC (call %ld), nearest first:", g_linked_n, calls);
+    log::write("linked: %d rows with Health and HealthLink, no SpawnedNPC (call %ld), nearest first:", g_linked_n,
+               calls);
     std::sort(g_linked, g_linked + g_linked_n, [](const Linked &a, const Linked &b) {
         return distance_to_player(a.position) < distance_to_player(b.position);
     });
@@ -471,14 +473,14 @@ void log_list(long calls) {
         if (e.shield_max)
             wsprintfA(shield, "  shield %d/%ld", static_cast<int>(e.shield_fraction * e.shield_max + 0.5f),
                       static_cast<long>(e.shield_max));
-        log::write("  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  b3c %u  "
-                   "from %lx/%lu  dist %s%s",
-                   static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation),
-                   static_cast<int>(e.fraction * e.max + 0.5f), static_cast<long>(e.max),
-                   static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0], e.kind[1], e.kind[2],
-                   e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c,
-                   static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist,
-                   shield);
+        log::write(
+            "  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  b3c %u  "
+            "from %lx/%lu  dist %s%s",
+            static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation),
+            static_cast<int>(e.fraction * e.max + 0.5f), static_cast<long>(e.max),
+            static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0], e.kind[1], e.kind[2],
+            e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c, static_cast<unsigned long>(e.source_id),
+            static_cast<unsigned long>(e.source_generation), dist, shield);
     }
 }
 
@@ -506,9 +508,9 @@ void walk_once(void *world, const player::State &s, long calls) {
     g_walk.cycles = c1 - c0;
 
     if (!g_first_said) {
-        log::write("enemies: first walk, %ld slots, %d archetypes classified in %ld us, on a thread of ours every %lu ms",
-                   static_cast<long>(slots), g_walk.fresh, static_cast<long>(us),
-                   static_cast<unsigned long>(g_interval_ms));
+        log::write(
+            "enemies: first walk, %ld slots, %d archetypes classified in %ld us, on a thread of ours every %lu ms",
+            static_cast<long>(slots), g_walk.fresh, static_cast<long>(us), static_cast<unsigned long>(g_interval_ms));
         g_first_said = true;
     }
     g_period.walks++;
@@ -537,23 +539,25 @@ void walk_once(void *world, const player::State &s, long calls) {
 
 void log_period() {
     const Count &t = g_period.sum, &m = g_period.slowest;
-    log::write("enemies: walk avg %ld us, max %ld us, %ld over %ld us, of %ld walks (%ld wakes idle) every %lu ms; "
-               "%d enemies, %d shields",
-               static_cast<long>(g_period.walks ? g_period.sum_us / g_period.walks : 0),
-               static_cast<long>(g_period.max_us), g_period.slow, static_cast<long>(kBudgetUs), g_period.walks,
-               g_period.idle, static_cast<unsigned long>(g_interval_ms), g_found_n, g_shields_n);
-    log::write("  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, "
-               "%d rows; %d rows rejected; %d Health columns unbounded",
-               t.fresh, t.changed, t.retried, t.chunks, t.lost_types, t.lost_offsets, t.lost_rows, t.rejected,
-               t.unbounded);
+    log::write(
+        "enemies: walk avg %ld us, max %ld us, %ld over %ld us, of %ld walks (%ld wakes idle) every %lu ms; "
+        "%d enemies, %d shields",
+        static_cast<long>(g_period.walks ? g_period.sum_us / g_period.walks : 0), static_cast<long>(g_period.max_us),
+        g_period.slow, static_cast<long>(kBudgetUs), g_period.walks, g_period.idle,
+        static_cast<unsigned long>(g_interval_ms), g_found_n, g_shields_n);
+    log::write(
+        "  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, "
+        "%d rows; %d rows rejected; %d Health columns unbounded",
+        t.fresh, t.changed, t.retried, t.chunks, t.lost_types, t.lost_offsets, t.lost_rows, t.rejected, t.unbounded);
     // The slowest walk's cycles as microseconds at the period's rate: far under its wall time = off the CPU.
     const long on_cpu = g_period.sum_cycles
                             ? static_cast<long>(m.cycles * static_cast<uint64_t>(g_period.sum_us) / g_period.sum_cycles)
                             : -1;
-    log::write("  the slowest walk: combat probe %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, "
-               "%d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, %d rows; %d rows rejected",
-               static_cast<long>(m.combat_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed, m.retried,
-               m.chunks, m.lost_types, m.lost_offsets, m.lost_rows, m.rejected);
+    log::write(
+        "  the slowest walk: combat probe %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, "
+        "%d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, %d rows; %d rows rejected",
+        static_cast<long>(m.combat_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed, m.retried, m.chunks,
+        m.lost_types, m.lost_offsets, m.lost_rows, m.rejected);
     g_period = {};
 }
 

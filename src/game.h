@@ -55,25 +55,26 @@ inline constexpr uint32_t kHealthFlags = 0x6432f1af;
 inline constexpr uint32_t kDead = 0x6e63a89c;
 inline constexpr uint32_t kHealthComponent = 0xa471f608;  // contentgame::HealthComponent, crheal's h_hc
 inline constexpr uint32_t kRegeneration = 0x8b9bc037;
-inline constexpr uint32_t kCombatStatus = 0x17560154;  // written by player_status::update_combat_status from the living NPCEnemy rows
+inline constexpr uint32_t kCombatStatus =
+    0x17560154;  // written by player_status::update_combat_status from the living NPCEnemy rows
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
-inline constexpr uint32_t kDebugName = 0x0bca075d;   // coregame::component::DebugName, 16 bytes
-inline constexpr uint32_t kNpcLevel = 0x712eb585;    // heron::leveling::component::NPCLevel, 8 bytes
-inline constexpr uint32_t kFactionData = 0x3796cba6; // heron::faction::component::FactionData, 4 bytes
-inline constexpr uint32_t kSpawnedNpc = 0x4967e683;  // heron::npc_spawner::component::SpawnedNPC, 0x60 bytes
+inline constexpr uint32_t kDebugName = 0x0bca075d;    // coregame::component::DebugName, 16 bytes
+inline constexpr uint32_t kNpcLevel = 0x712eb585;     // heron::leveling::component::NPCLevel, 8 bytes
+inline constexpr uint32_t kFactionData = 0x3796cba6;  // heron::faction::component::FactionData, 4 bytes
+inline constexpr uint32_t kSpawnedNpc = 0x4967e683;   // heron::npc_spawner::component::SpawnedNPC, 0x60 bytes
 // The enemy walk (enemies.h). Row sizes are the types' own: a small column's width over its capacity counts padding.
 inline constexpr uint32_t kWorldTransform = 0x6cfbb2a9;  // coregame::component::WorldTransformReadOnly
 inline constexpr uint32_t kAttachment = 0x5cf3ff20;      // heron::health_attachments::component::Attachment
 inline constexpr uint32_t kSpawnedNpcRowSize = 0x60;
-inline constexpr uint32_t kSpawnedKind = 0x30;  // 8 bytes, the enemy's kind
+inline constexpr uint32_t kSpawnedKind = 0x30;    // 8 bytes, the enemy's kind
 inline constexpr uint32_t kSpawnedByte3c = 0x3c;  // 1 byte, meaning unknown: 2 on every enemy met, 4 on two big ones
-inline constexpr uint32_t kSpawnedSource = 0;     // 8 bytes shaped like an entity handle, repeated at +8: the spawner's?
-inline constexpr uint32_t kFactionRowSize = 4;  // FNV-1a 32 of the faction's lowercase name
+inline constexpr uint32_t kSpawnedSource = 0;    // 8 bytes shaped like an entity handle, repeated at +8: the spawner's?
+inline constexpr uint32_t kFactionRowSize = 4;   // FNV-1a 32 of the faction's lowercase name
 inline constexpr uint32_t kNpcLevelRowSize = 8;  // the level in the first int
 inline constexpr uint32_t kWorldTransformRowSize = 0x20;
 inline constexpr uint32_t kWorldPosition = 0x10;     // three floats, Y up
 inline constexpr uint32_t kWorldPositionPad = 0x1c;  // a zero float after them
-inline constexpr uint32_t kAttachmentRowSize = 8;  // the owner's entity handle
+inline constexpr uint32_t kAttachmentRowSize = 8;    // the owner's entity handle
 // The player's speed (player.h): the facing direction as a unit float3 at +0, a copy of the position at +0x10, and the
 // speed at +0x20, written each frame as the length of a velocity vector whose column is not resolved yet.
 inline constexpr uint32_t kMovement = 0x59fd0f7a;  // heron::movement::component::Movement
@@ -90,10 +91,15 @@ struct Faction {
     const char *name;
 };
 inline constexpr Faction kFactions[] = {
-    {0x4aac31a8, "hiss"},    {0x1d82b4ed, "mold"},       {0x2c99c300, "player"},
-    {0x8c4b1ad8, "neutral"}, {0x20408545, "explosives"}, {0x175869f5, "hedron"},
+    {0x4aac31a8, "hiss"},
+    {0x1d82b4ed, "mold"},
+    {0x2c99c300, "player"},
+    {0x8c4b1ad8, "neutral"},
+    {0x20408545, "explosives"},
+    {0x175869f5, "hedron"},
     // The player's summons, named by us: no candidate hashed to these (2026-09-29).
-    {0x538682a2, "ally:mold"}, {0xeae53489, "ally:anomaly"},
+    {0x538682a2, "ally:mold"},
+    {0xeae53489, "ally:anomaly"},
 };
 
 // --- A kind's name. The kind at SpawnedNPC+0x30 is FNV-1a 64 of the lowercase internal name, read little-endian; the
@@ -112,29 +118,51 @@ struct Kind {
 };
 #define CRSRT_KIND(n) {fnv1a64(n), n, false}
 inline constexpr Kind kKinds[] = {
-    CRSRT_KIND("artillery"), CRSRT_KIND("blob"), CRSRT_KIND("brute"), CRSRT_KIND("enraged"), CRSRT_KIND("glider"),
-    CRSRT_KIND("healer"), CRSRT_KIND("hermit"), CRSRT_KIND("master"), CRSRT_KIND("plague"), CRSRT_KIND("pursuer"),
-    CRSRT_KIND("ranger"), CRSRT_KIND("sniper"), CRSRT_KIND("soldier"), CRSRT_KIND("spitter"), CRSRT_KIND("spore"),
+    CRSRT_KIND("artillery"),
+    CRSRT_KIND("blob"),
+    CRSRT_KIND("brute"),
+    CRSRT_KIND("enraged"),
+    CRSRT_KIND("glider"),
+    CRSRT_KIND("healer"),
+    CRSRT_KIND("hermit"),
+    CRSRT_KIND("master"),
+    CRSRT_KIND("plague"),
+    CRSRT_KIND("pursuer"),
+    CRSRT_KIND("ranger"),
+    CRSRT_KIND("sniper"),
+    CRSRT_KIND("soldier"),
+    CRSRT_KIND("spitter"),
+    CRSRT_KIND("spore"),
     CRSRT_KIND("leviathan"),
     // In the database, hash unmet so far.
-    CRSRT_KIND("brute_overshield"), CRSRT_KIND("brute_arcs_friendly"), CRSRT_KIND("pursuer_friendly"),
-    CRSRT_KIND("healer_overshield"), CRSRT_KIND("glider_overshield"), CRSRT_KIND("mini_blob"),
-    CRSRT_KIND("miniboss_blob"), CRSRT_KIND("miniboss_glider_overshield"), CRSRT_KIND("miniboss_master"),
+    CRSRT_KIND("brute_overshield"),
+    CRSRT_KIND("brute_arcs_friendly"),
+    CRSRT_KIND("pursuer_friendly"),
+    CRSRT_KIND("healer_overshield"),
+    CRSRT_KIND("glider_overshield"),
+    CRSRT_KIND("mini_blob"),
+    CRSRT_KIND("miniboss_blob"),
+    CRSRT_KIND("miniboss_glider_overshield"),
+    CRSRT_KIND("miniboss_master"),
     CRSRT_KIND("flux_horizontal_saw_gap"),
     // Paired by the database only.
-    {0xc9126a04f8f5aa92ull, "miniboss_leviathan", true}, {0x0ffb453d3c75872aull, "moldbag_melee", true},
-    {0xc2d353a9fa6fce18ull, "moldbag_shotgun", true},     {0x0ae36649c3edfaa6ull, "moldbag_rocketlauncher", true},
-    {0x0c8622242419f585ull, "brute_arcs", true},          {0x504daed11f390c7cull, "sniper_overshield", true},
-    {0x22a6ec1be4b02ed0ull, "drifter_charge", true},      {0xb5c87403f8aa4595ull, "flux_horizontal_saw", true},
+    {0xc9126a04f8f5aa92ull, "miniboss_leviathan", true},
+    {0x0ffb453d3c75872aull, "moldbag_melee", true},
+    {0xc2d353a9fa6fce18ull, "moldbag_shotgun", true},
+    {0x0ae36649c3edfaa6ull, "moldbag_rocketlauncher", true},
+    {0x0c8622242419f585ull, "brute_arcs", true},
+    {0x504daed11f390c7cull, "sniper_overshield", true},
+    {0x22a6ec1be4b02ed0ull, "drifter_charge", true},
+    {0xb5c87403f8aa4595ull, "flux_horizontal_saw", true},
 };
 #undef CRSRT_KIND
 static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
 
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
 // get_player is one of 14 sibling instantiations; the player's is the one whose lookup site carries kPlayerTag.
-inline constexpr uint8_t kGetPlayerLookup[] = {0x49, 0x8b, 0x5c, 0xfe, 0x48, 0x48, 0x8d, 0x8f, 0, 0, 0, 0, 0x48,
-                                               0xc1, 0xe1, 0x05, 0x42, 0x8b, 0x54, 0x31, 0x1c, 0x41, 0xb8, 0x92,
-                                               0x9e, 0xf9, 0x59};
+inline constexpr uint8_t kGetPlayerLookup[] = {0x49, 0x8b, 0x5c, 0xfe, 0x48, 0x48, 0x8d, 0x8f, 0,
+                                               0,    0,    0,    0x48, 0xc1, 0xe1, 0x05, 0x42, 0x8b,
+                                               0x54, 0x31, 0x1c, 0x41, 0xb8, 0x92, 0x9e, 0xf9, 0x59};
 inline constexpr uint8_t kGetPlayerLookupMask[] = {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1,
                                                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 // mov [rsp+8],rbx; mov [rsp+18],rsi; push rbp; push rdi; push r14; lea rbp,[rsp-50]; sub rsp,150
@@ -144,8 +172,7 @@ inline constexpr uint8_t kGetPlayerPrologue[] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0
 // The runner, heron::healing::regeneration_update::system, is found by its name: the one lea that references
 // this string, then the registration store `lea rax, fn; mov [reg+0x140], rax` within 0x400 bytes after it. The
 // register differs per system (r15 for the runner, rsi for the sonar, r12 elsewhere); the slot does not.
-inline constexpr char kRunnerName[] =
-    "ecs::system::getName<void __cdecl heron::healing::regeneration_update::system(";
+inline constexpr char kRunnerName[] = "ecs::system::getName<void __cdecl heron::healing::regeneration_update::system(";
 inline constexpr int32_t kSystemFnSlot = 0x140;
 
 // --- The camera, as RadarPlus reads it (crmods/RadarPlus, its log and projectWorld): the view-projection matrix at
@@ -161,8 +188,10 @@ inline constexpr uintptr_t kEnvTray = 0x58;
 
 // --- The district (AKTH-0106). heron::ui_sonar::update_exploration_sonar::system reads, in slots 0-14: its entity,
 // four queries, SonarData, QuestHUD, ui_map_detail::Database, ZonesMetadata, DistrictMarkerDatabase,
-// DistrictDatabase, DistrictRuntime, ActiveDistrict, world_state::Database, PhysicsScene. Found by name like the runner.
-inline constexpr char kSonarName[] = "ecs::system::getName<void __cdecl heron::ui_sonar::update_exploration_sonar::system(";
+// DistrictDatabase, DistrictRuntime, ActiveDistrict, world_state::Database, PhysicsScene. Found by name like the
+// runner.
+inline constexpr char kSonarName[] =
+    "ecs::system::getName<void __cdecl heron::ui_sonar::update_exploration_sonar::system(";
 inline constexpr int kSonarSlots = 15;
 inline constexpr uintptr_t kSonarZonesMetadata = 8 * 8;
 inline constexpr uintptr_t kSonarDistrictDatabase = 10 * 8;

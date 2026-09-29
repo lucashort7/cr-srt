@@ -5,16 +5,16 @@
 #include "game.h"
 #include "hooks/runner.h"
 #include "hooks/sonar.h"
-#include "memory.h"
 #include "log.h"
+#include "memory.h"
 #include "player.h"
 
 #include <windows.h>
 
 #include <cfloat>
 #include <cmath>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
 
 #include "imgui.h"
 
@@ -70,8 +70,9 @@ bool runner_stale(long calls, long frame) {
 // A value that rounds to zero at one decimal, as 0: "-0.0" reads as a direction that is not there.
 float tenth(float v) { return std::fabs(v) < 0.05f ? 0.0f : v; }
 
-// The stats block on the left, one row per number: health, position, the game's speed, its velocity vector. "--" when the runner cannot resolve the
-// row or has stopped being called: a held-over value would read as live. Returns the y below the block.
+// The stats block on the left, one row per number: health, position, the game's speed, its velocity vector. "--" when
+// the runner cannot resolve the row or has stopped being called: a held-over value would read as live. Returns the y
+// below the block.
 float stats(ImVec2 at, float px, const player::State &p, bool stale) {
     const float step = std::floor(px * 1.25f);
     char text[96];
@@ -275,8 +276,9 @@ void labels(float w, float h, float px, const player::State &p, bool stale) {
         kind_label(e.kind, true, kind, sizeof kind);
         std::snprintf(text, sizeof text, "%s %s", faction, kind);
         const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(lpx, FLT_MAX, 0.0f, text);
-        text_at(ImVec2(std::floor((nx + 1.0f) * 0.5f * w - size.x * 0.5f), std::floor((1.0f - ny) * 0.5f * h + lpx * 0.3f)),
-                lpx, text);
+        text_at(
+            ImVec2(std::floor((nx + 1.0f) * 0.5f * w - size.x * 0.5f), std::floor((1.0f - ny) * 0.5f * h + lpx * 0.3f)),
+            lpx, text);
     }
 }
 
@@ -291,8 +293,9 @@ void draw(float width, float height, float px, long frame) {
     // Every glyph the overlay can show, measured each frame at every size it draws. Glyphs bake the first time they are
     // drawn, and one first seen mid-game re-uploads the atlas with an unbounded wait on the game's queue; measured here
     // they bake with the atlas's first upload, and afterwards this is a cache lookup.
-    static const char glyphs[] = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
-                                 "abcdefghijklmnopqrstuvwxyz{|}~\xC2\xB7";
+    static const char glyphs[] =
+        " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
+        "abcdefghijklmnopqrstuvwxyz{|}~\xC2\xB7";
     for (float size : {px, panel_px(px), number_px(px)}) ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, glyphs);
     injected_line(width, height, px);
 

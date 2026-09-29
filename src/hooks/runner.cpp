@@ -3,8 +3,8 @@
 
 #include "game.h"
 #include "lifecycle.h"
-#include "memory.h"
 #include "log.h"
+#include "memory.h"
 #include "motion.h"
 #include "player.h"
 
@@ -50,10 +50,10 @@ int64_t now_us() {
 bool same(const player::State &a, const player::State &b) {
     return a.has_health == b.has_health && a.has_position == b.has_position && a.has_speed == b.has_speed &&
            a.fraction == b.fraction && a.max == b.max && a.position[0] == b.position[0] &&
-           a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed && a.velocity[0] == b.velocity[0] && a.velocity[1] == b.velocity[1] &&
-           a.velocity[2] == b.velocity[2] && a.arch == b.arch &&
-           a.health_at == b.health_at && a.position_at == b.position_at && a.speed_at == b.speed_at &&
-           a.velocity_at == b.velocity_at;
+           a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed &&
+           a.velocity[0] == b.velocity[0] && a.velocity[1] == b.velocity[1] && a.velocity[2] == b.velocity[2] &&
+           a.arch == b.arch && a.health_at == b.health_at && a.position_at == b.position_at &&
+           a.speed_at == b.speed_at && a.velocity_at == b.velocity_at;
 }
 
 // "529.1 -43.9 -104.15 at 000001A1B04492F0", "(hidden)" after a value the HUD refuses, "--" for a row not read.
@@ -170,9 +170,10 @@ void log_env_tray(const char *who, void *ctx, int slots) {
             mem::owner_of(p, own, sizeof own);
             const auto *f = static_cast<const float *>(p);
             const auto *b = static_cast<const uint8_t *>(p);
-            std::snprintf(body, sizeof body, "%g %g %g %g | %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
-                          f[0], f[1], f[2], f[3], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10],
-                          b[11], b[12], b[13], b[14], b[15]);
+            std::snprintf(body, sizeof body,
+                          "%g %g %g %g | %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x", f[0],
+                          f[1], f[2], f[3], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11],
+                          b[12], b[13], b[14], b[15]);
         }
         log::write("  slot %d +%x: %p (%s) %s", i, i * 8, p, own, body);
     }

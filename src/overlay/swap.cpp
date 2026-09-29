@@ -9,17 +9,18 @@
 #include "memory.h"
 #include "overlay/renderer.h"
 
-#include <windows.h>
 #include <d3d12.h>
 #include <dxgi.h>
+#include <windows.h>
 
 namespace crsrt::overlay {
 
 namespace {
 
-constexpr int kMaxClasses = 8;        // distinct vtables given a copy; every object of one class shares its copy
+constexpr int kMaxClasses = 8;  // distinct vtables given a copy; every object of one class shares its copy
 constexpr int kMaxSlots = 512;
-constexpr int kSwapChain4Slots = 41;  // IUnknown 3, IDXGIObject 4, DeviceSubObject 1, SwapChain 10, 1: 11, 2: 7, 3: 4, 4: 1
+constexpr int kSwapChain4Slots =
+    41;  // IUnknown 3, IDXGIObject 4, DeviceSubObject 1, SwapChain 10, 1: 11, 2: 7, 3: 4, 4: 1
 
 using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain *, UINT, UINT);
 

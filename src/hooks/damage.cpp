@@ -161,15 +161,17 @@ void note(float *row, const uint8_t *src, uint64_t ent, float amount, float befo
         if (mem::readable(src, 6))
             wsprintfA(s, "%02x %02x %02x %02x %02x %02x", src[0], src[1], src[2], src[3], src[4], src[5]);
         if (m.found)
-            log::write("hit %ld: row %p ent %p src %s amount %s health %s -> %s of %d, returned %s | arch %ld chunk %p "
-                       "column +%lx capacity %lu index %lu",
-                       n, row, reinterpret_cast<void *>(ent), s, a, b, c, max, r, static_cast<long>(m.place.arch),
-                       reinterpret_cast<void *>(m.place.chunk), static_cast<unsigned long>(m.place.column),
-                       static_cast<unsigned long>(m.place.capacity), static_cast<unsigned long>(m.place.index));
+            log::write(
+                "hit %ld: row %p ent %p src %s amount %s health %s -> %s of %d, returned %s | arch %ld chunk %p "
+                "column +%lx capacity %lu index %lu",
+                n, row, reinterpret_cast<void *>(ent), s, a, b, c, max, r, static_cast<long>(m.place.arch),
+                reinterpret_cast<void *>(m.place.chunk), static_cast<unsigned long>(m.place.column),
+                static_cast<unsigned long>(m.place.capacity), static_cast<unsigned long>(m.place.index));
         else
-            log::write("hit %ld: row %p ent %p src %s amount %s health %s -> %s of %d, returned %s | not placed "
-                       "(world %p)",
-                       n, row, reinterpret_cast<void *>(ent), s, a, b, c, max, r, world);
+            log::write(
+                "hit %ld: row %p ent %p src %s amount %s health %s -> %s of %d, returned %s | not placed "
+                "(world %p)",
+                n, row, reinterpret_cast<void *>(ent), s, a, b, c, max, r, world);
     }
     if (m.found && first_meeting(ent)) describe(world, m.place, ent, max);
     if (new_arch) {
@@ -208,8 +210,8 @@ bool install(HMODULE exe) {
             log::write("damage: prologue differs at byte %d - not hooked (another build?)", static_cast<int>(i));
             return false;
         }
-    MH_STATUS ms = MH_CreateHook(target, reinterpret_cast<void *>(&hk_take_damage),
-                                 reinterpret_cast<void **>(&g_original));
+    MH_STATUS ms =
+        MH_CreateHook(target, reinterpret_cast<void *>(&hk_take_damage), reinterpret_cast<void **>(&g_original));
     if (ms != MH_OK) {
         log::write("damage: MH_CreateHook %d", static_cast<int>(ms));
         return false;

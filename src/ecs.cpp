@@ -160,8 +160,8 @@ void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row) {
         float f = *reinterpret_cast<const float *>(row);
         int whole = static_cast<int>(f), frac = static_cast<int>((f - static_cast<float>(whole)) * 1000);
         if (frac < 0) frac = -frac;
-        log::write("  %s: idx %d (mine %d) row %p = chunk+%lx  +0 float %d.%03d  +4 int %ld", t.name, game_i, mine,
-                   row, static_cast<unsigned long>(a.offsets[game_i]), whole, frac,
+        log::write("  %s: idx %d (mine %d) row %p = chunk+%lx  +0 float %d.%03d  +4 int %ld", t.name, game_i, mine, row,
+                   static_cast<unsigned long>(a.offsets[game_i]), whole, frac,
                    static_cast<long>(*reinterpret_cast<const int32_t *>(row + 4)));
     }
 }

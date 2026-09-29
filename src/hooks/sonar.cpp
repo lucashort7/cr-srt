@@ -137,9 +137,11 @@ int g_short_said = -1;
 void short_of(int why, const void *ctx, LONG n) {
     if (why == g_short_said) return;
     g_short_said = why;
-    if (why) log::write("sonar: look stopped at the %s (ctx %p, call %ld)", why == 1 ? "tray" : "tray's slots", ctx,
-                        static_cast<long>(n));
-    else log::write("sonar: look reads again (call %ld)", static_cast<long>(n));
+    if (why)
+        log::write("sonar: look stopped at the %s (ctx %p, call %ld)", why == 1 ? "tray" : "tray's slots", ctx,
+                   static_cast<long>(n));
+    else
+        log::write("sonar: look reads again (call %ld)", static_cast<long>(n));
 }
 
 void look(void *ctx, LONG n) {

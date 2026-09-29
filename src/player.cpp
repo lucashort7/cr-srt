@@ -82,7 +82,8 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
               m < 0 ? kAbsent : a.offsets[m],
               s < 0 ? kAbsent : a.offsets[s]};
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
-                       was.transform != g_memo.transform || was.movement != g_memo.movement || was.state != g_memo.state;
+                       was.transform != g_memo.transform || was.movement != g_memo.movement ||
+                       was.state != g_memo.state;
     if (moved && g_resolutions < kResolutionsLogged) {
         g_resolutions++;
         char health[16], transform[16], movement[16], state[16];

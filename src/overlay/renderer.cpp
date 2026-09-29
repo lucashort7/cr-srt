@@ -288,7 +288,8 @@ void frame(IDXGISwapChain *sc) {
     ImGui::NewFrame();
     ui::draw(io.DisplaySize.x, io.DisplaySize.y, g_font_px, g_drawn);
     ImGui::Render();
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_list);  // the first one also uploads the font atlas, and waits
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(),
+                                  g_list);  // the first one also uploads the font atlas, and waits
 
     b.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     b.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
