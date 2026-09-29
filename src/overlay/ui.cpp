@@ -77,6 +77,8 @@ float tenth(float v) { return std::fabs(v) < 0.05f ? 0.0f : v; }
 float stats(ImVec2 at, float px, const player::State &p, bool stale) {
     const float step = std::floor(px * 1.25f);
     char text[96];
+    // Written as a negation so a NaN fraction is refused too; the DeMorgan form would let it through.
+    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
     if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0)
         std::snprintf(text, sizeof text, "health  --");
     else

@@ -147,11 +147,16 @@ void short_of(int why, const void *ctx, LONG n) {
 
 void look(void *ctx, LONG n) {
     const uint8_t *tray = nullptr;
-    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) return short_of(1, ctx, n);
+    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) {
+        short_of(1, ctx, n);
+        return;
+    }
     const uint8_t *db = nullptr, *runtime = nullptr, *active = nullptr;
     if (!field(tray, game::kSonarDistrictDatabase, db) || !field(tray, game::kSonarDistrictRuntime, runtime) ||
-        !field(tray, game::kSonarActiveDistrict, active))
-        return short_of(2, ctx, n);
+        !field(tray, game::kSonarActiveDistrict, active)) {
+        short_of(2, ctx, n);
+        return;
+    }
     short_of(0, ctx, n);
     District d;
     uint32_t hash = 0;

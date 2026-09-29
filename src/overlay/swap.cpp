@@ -128,14 +128,14 @@ void restore(void *sc) {
 
 }  // namespace
 
-void on_wrapper(void *sc, void *device, void *queue) {
+void on_wrapper(void *swapchain, void *device, void *queue) {
     if (g_restore_requested) {
-        if (!g_restore_done) restore(sc);
+        if (!g_restore_done) restore(swapchain);
         return;
     }
-    if (g_stop_draw || !sc || !device || !queue) return;
+    if (g_stop_draw || !swapchain || !device || !queue) return;
     renderer::set_target(static_cast<ID3D12Device *>(device), static_cast<ID3D12CommandQueue *>(queue));
-    swap_in(sc);
+    swap_in(swapchain);
     InterlockedExchange(&g_armed, 1);
 }
 

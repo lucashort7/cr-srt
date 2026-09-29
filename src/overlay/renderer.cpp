@@ -212,10 +212,10 @@ bool teardown(DWORD ms) {
     return true;
 }
 
-void frame(IDXGISwapChain *sc) {
+void frame(IDXGISwapChain *swapchain) {
     if (g_broken) return;
     DXGI_SWAP_CHAIN_DESC d{};
-    if (FAILED(sc->GetDesc(&d)) || !d.BufferDesc.Width || !d.BufferDesc.Height) return;
+    if (FAILED(swapchain->GetDesc(&d)) || !d.BufferDesc.Width || !d.BufferDesc.Height) return;
     if (g_ready && (d.BufferDesc.Format != g_format || g_target_dev != g_dev || g_target_q != g_q)) {
         log::write("overlay: format %d -> %d, device %p -> %p, queue %p -> %p: rebuilding", static_cast<int>(g_format),
                    static_cast<int>(d.BufferDesc.Format), g_dev, g_target_dev, g_q, g_target_q);
@@ -244,15 +244,15 @@ void frame(IDXGISwapChain *sc) {
     const int64_t t_frame = now_us();
     g_wait_cost.add(t_frame - t_wait);
     IDXGISwapChain3 *sc3 = nullptr;
-    if (FAILED(sc->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void **>(&sc3))) || !sc3) {
-        log::write("overlay: swapchain %p has no IDXGISwapChain3 - drawing stops", sc);
+    if (FAILED(swapchain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void **>(&sc3))) || !sc3) {
+        log::write("overlay: swapchain %p has no IDXGISwapChain3 - drawing stops", swapchain);
         g_broken = true;
         return;
     }
     UINT bb = sc3->GetCurrentBackBufferIndex();
     sc3->Release();
     ID3D12Resource *buf = nullptr;
-    HRESULT hr = sc->GetBuffer(bb, __uuidof(ID3D12Resource), reinterpret_cast<void **>(&buf));
+    HRESULT hr = swapchain->GetBuffer(bb, __uuidof(ID3D12Resource), reinterpret_cast<void **>(&buf));
     if (FAILED(hr) || !buf) {
         if (g_skipped++ % 600 == 0)
             log::write("overlay: GetBuffer(%u) hr %08lx, frame skipped", bb, static_cast<unsigned long>(hr));
