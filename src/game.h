@@ -2,6 +2,7 @@
 // cache, nothing else. Offsets are exe-relative; hashes are FNV-1a 32 of a component type's full name.
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 namespace crsrt::game {
@@ -223,5 +224,10 @@ inline constexpr uintptr_t kActiveCount = 0x8;
 inline constexpr uintptr_t kActiveStride = 0x10;
 inline constexpr uintptr_t kActiveDistrictHash = 0x8;
 inline constexpr uintptr_t kActiveOtherHash = 0xc;
+
+// A Health row in points: its fraction of max, rounded to the nearest point.
+inline int points(float fraction, int32_t max) {
+    return static_cast<int>(std::lround(fraction * static_cast<float>(max)));
+}
 
 }  // namespace crsrt::game

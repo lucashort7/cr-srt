@@ -458,7 +458,7 @@ void log_linked(long calls) {
             n += wsprintfA(link + n, b % 4 == 3 ? "%02x " : "%02x", l.link[b]);
         log::write("  %lx/%lu  %d/%ld  arch %ld  dist %s  link (%lu bytes) %s",
                    static_cast<unsigned long>(static_cast<uint32_t>(l.handle)),
-                   static_cast<unsigned long>(l.handle >> 32), static_cast<int>(l.fraction * l.max + 0.5f),
+                   static_cast<unsigned long>(l.handle >> 32), game::points(l.fraction, l.max),
                    static_cast<long>(l.max), static_cast<long>(l.arch), dist, static_cast<unsigned long>(l.link_size),
                    link);
     }
@@ -471,16 +471,15 @@ void log_list(long calls) {
         char dist[24], shield[40] = "";
         tenths(e.distance, dist);
         if (e.shield_max)
-            wsprintfA(shield, "  shield %d/%ld", static_cast<int>(e.shield_fraction * e.shield_max + 0.5f),
+            wsprintfA(shield, "  shield %d/%ld", game::points(e.shield_fraction, e.shield_max),
                       static_cast<long>(e.shield_max));
         log::write(
             "  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  b3c %u  "
             "from %lx/%lu  dist %s%s",
-            static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation),
-            static_cast<int>(e.fraction * e.max + 0.5f), static_cast<long>(e.max),
-            static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0], e.kind[1], e.kind[2],
-            e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c, static_cast<unsigned long>(e.source_id),
-            static_cast<unsigned long>(e.source_generation), dist, shield);
+            static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation), game::points(e.fraction, e.max),
+            static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0],
+            e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c,
+            static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist, shield);
     }
 }
 

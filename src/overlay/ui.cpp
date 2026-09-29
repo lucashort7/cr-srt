@@ -82,7 +82,7 @@ float stats(ImVec2 at, float px, const player::State &p, bool stale) {
     if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0)
         std::snprintf(text, sizeof text, "health  --");
     else
-        std::snprintf(text, sizeof text, "health  %d / %d  (%.1f%%)", static_cast<int>(p.fraction * p.max + 0.5f),
+        std::snprintf(text, sizeof text, "health  %d / %d  (%.1f%%)", game::points(p.fraction, p.max),
                       static_cast<int>(p.max), p.fraction * 100.0f);
     text_at(at, px, text);
     if (stale || !p.has_position)
@@ -211,10 +211,10 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
         if (shielded) bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
         const float bar_y = y + shield_h + 1.0f;
         bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, IM_COL32(210, 50, 40, 230));
-        const int hp = static_cast<int>(e.fraction * e.max + 0.5f);
+        const int hp = game::points(e.fraction, e.max);
         if (shielded)
             std::snprintf(text, sizeof text, "%d / %d  +%d", hp, static_cast<int>(e.max),
-                          static_cast<int>(e.shield_fraction * e.shield_max + 0.5f));
+                          game::points(e.shield_fraction, e.shield_max));
         else
             std::snprintf(text, sizeof text, "%d / %d", hp, static_cast<int>(e.max));
         const float npx = number_px(stats_px);
