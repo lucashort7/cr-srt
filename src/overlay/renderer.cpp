@@ -10,6 +10,7 @@
 #include <dxgi1_4.h>
 
 #include <cmath>
+#include <cstdint>
 
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
@@ -53,6 +54,24 @@ bool g_ready;
 bool g_broken;  // a build or a frame failed: nothing is drawn again this session
 float g_font_px;
 LARGE_INTEGER g_qpf, g_prev;
+
+// The overlay's own cost per 600 frames, in microseconds: the wait for our allocator's fence (normally zero), and
+// the frame itself, from the buffer lookup through ImGui's build and draw to the list's execution.
+struct Cost {
+    int64_t sum = 0, max = 0;
+    void add(int64_t us) {
+        sum += us;
+        if (us > max) max = us;
+    }
+} g_wait_cost, g_frame_cost;
+long g_cost_frames;
+constexpr long kCostEvery = 600;
+
+int64_t now_us() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return t.QuadPart * 1000000 / g_qpf.QuadPart;
+}
 
 bool ok(HRESULT hr, const char *what) {
     if (SUCCEEDED(hr)) return true;
@@ -211,6 +230,7 @@ void frame(IDXGISwapChain *sc) {
     }
 
     UINT f = g_frame % kFrames;
+    const int64_t t_wait = now_us();
     if (g_fence->GetCompletedValue() < g_fence_at[f]) {  // never an unbounded wait on the render thread
         g_fence->SetEventOnCompletion(g_fence_at[f], g_fence_event);
         WaitForSingleObject(g_fence_event, 100);
@@ -220,6 +240,8 @@ void frame(IDXGISwapChain *sc) {
             return;
         }
     }
+    const int64_t t_frame = now_us();
+    g_wait_cost.add(t_frame - t_wait);
     IDXGISwapChain3 *sc3 = nullptr;
     if (FAILED(sc->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void **>(&sc3))) || !sc3) {
         log::write("overlay: swapchain %p has no IDXGISwapChain3 - drawing stops", sc);
@@ -288,6 +310,14 @@ void frame(IDXGISwapChain *sc) {
     buf->Release();
     g_frame++;
     g_drawn++;
+    g_frame_cost.add(now_us() - t_frame);
+    if (++g_cost_frames == kCostEvery) {
+        log::write("overlay: own cost over %ld frames: frame avg %ld us, max %ld us; fence wait avg %ld us, max %ld us",
+                   kCostEvery, static_cast<long>(g_frame_cost.sum / kCostEvery), static_cast<long>(g_frame_cost.max),
+                   static_cast<long>(g_wait_cost.sum / kCostEvery), static_cast<long>(g_wait_cost.max));
+        g_frame_cost = g_wait_cost = {};
+        g_cost_frames = 0;
+    }
     if (g_drawn == 1 || g_drawn % 3600 == 0)
         log::write("overlay: frame %ld drawn, %ux%u format %d, back buffer %u", g_drawn, d.BufferDesc.Width,
                    d.BufferDesc.Height, static_cast<int>(d.BufferDesc.Format), bb);

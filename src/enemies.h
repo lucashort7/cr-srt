@@ -1,6 +1,10 @@
-// enemies.h — every NPC with health, read from the ECS on each runner call: the rows of every archetype whose columns
-// hold Health and SpawnedNPC, each with its shield, published nearest to the player first for the render thread.
-// The route and its measurements: the enemy research note in the vault, section "The list without damage".
+// enemies.h — every NPC with health, read from the ECS on a thread of ours: the rows of every archetype whose columns
+// hold Health and SpawnedNPC, each with its shield, published nearest to the player first for the render thread. The
+// thread walks every [enemies] interval_ms (default 100), and only when the runner was called since its last walk; the
+// runner's own call stores nothing for it beyond what runner.h already publishes. A walk outside a system call reads
+// while the game writes: rows that fail the health checks are rejected and counted, never published.
+// The route and its measurements: the enemy research note in the vault, section "The list without damage"; the move
+// off the game's thread: story AKTH-0103.
 #pragma once
 
 #include <cstdint>
@@ -31,8 +35,12 @@ struct List {
     Enemy rows[kMaxRows];
 };
 
-// The runner's tick (runner::set_tick): walks, publishes, and logs the walk's cost every 600 calls. Runner thread.
-void tick(void *world, long calls);
+// Starts the walk thread, which reads runner::world and runner::player_state; before or after the runner is hooked,
+// since it idles until both answer. False with the reason logged. Logs the walks' cost every 20 s.
+bool start();
+
+// Stops the thread and waits for it, at most 5 s; false = still running, the DLL must stay mapped. Never started: true.
+bool stop();
 
 // The last published list. Any thread.
 void read(List &out);

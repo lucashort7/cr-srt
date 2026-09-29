@@ -2,6 +2,7 @@
 // return into kills the game, and a DLL left mapped costs nothing.
 #include "unload.h"
 
+#include "enemies.h"
 #include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
@@ -31,7 +32,9 @@ DWORD WINAPI unloader(LPVOID) {
         CloseHandle(g_boot);
         if (w != WAIT_OBJECT_0) ExitThread(0);
     }
-    // the overlay first, while the Present hook still runs: the swapchain's vtable goes back on the render thread
+    // the walk thread first: it is ours, it reads the world on its own, and its code must not be unmapped under it
+    if (!enemies::stop()) ExitThread(0);
+    // the overlay next, while the Present hook still runs: the swapchain's vtable goes back on the render thread
     if (lifecycle::present_hooked && !overlay::unload()) ExitThread(0);
 
     if (lifecycle::runner_hooked || lifecycle::present_hooked || lifecycle::damage_hooked) {

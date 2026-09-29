@@ -30,6 +30,21 @@ player::State g_player;
 // The last reading written to the log, so the log only gets a line when something changed.
 player::State g_logged;
 
+// The hook's own time on the game's thread, per 600 calls: what the runner call costs the game now that the enemy
+// walk is off it (AKTH-0103's QA asks for its max).
+int64_t g_own_sum_us, g_own_max_us;
+const int64_t g_qpc_hz = [] {
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    return f.QuadPart;
+}();
+
+int64_t now_us() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return t.QuadPart * 1000000 / g_qpc_hz;
+}
+
 bool same(const player::State &a, const player::State &b) {
     return a.has_health == b.has_health && a.has_position == b.has_position && a.has_speed == b.has_speed &&
            a.fraction == b.fraction && a.max == b.max && a.position[0] == b.position[0] &&
@@ -83,6 +98,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         log::write("runner: first call tid %lu, holder=%p world=%p b=%p c=%p", GetCurrentThreadId(), a, world, b, c);
         player::log_first_look(world);
     } else {
+        const int64_t t0 = now_us();
         if (void *was = g_world.load(); world != was) {
             log::write("runner: world %p -> %p (call %ld)", was, world, static_cast<long>(n));
             g_world = world;
@@ -93,7 +109,15 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         AcquireSRWLockExclusive(&g_lock);
         g_player = s;
         ReleaseSRWLockExclusive(&g_lock);
-        if (n % 600 == 0) log_player(s, n);  // ~every 20 s at the runner's 30 calls a second
+        const int64_t us = now_us() - t0;
+        g_own_sum_us += us;
+        if (us > g_own_max_us) g_own_max_us = us;
+        if (n % 600 == 0) {  // ~every 20 s at the runner's 30 calls a second
+            log_player(s, n);
+            log::write("runner: own time avg %ld us, max %ld us over 600 calls", static_cast<long>(g_own_sum_us / 600),
+                       static_cast<long>(g_own_max_us));
+            g_own_sum_us = g_own_max_us = 0;
+        }
     }
     if (Tick tick = g_tick.load(); tick && world) tick(world, n);
     g_original(a, b, c, d);

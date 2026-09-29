@@ -42,8 +42,9 @@ DWORD WINAPI boot_main(LPVOID) {
             log::write("getplayer exe+%lx = %p bytes %02x %02x %02x %02x %02x %02x %02x %02x",
                        static_cast<unsigned long>(o.get_player), p, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
         player::set_get_player(reinterpret_cast<player::GetPlayerFn>(const_cast<uint8_t *>(p)));
-        runner::set_tick(&enemies::tick);
         if (!lifecycle::stopping) lifecycle::runner_hooked = runner::install(exe, o.runner);
+        // the walk on its own thread, off what the runner publishes; nothing runs on the runner's call for it
+        if (!lifecycle::stopping && lifecycle::runner_hooked) enemies::start();
         // the probe after the runner, whose world it reads
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             lifecycle::damage_hooked = damage::install(exe);
