@@ -420,7 +420,7 @@ void tenths(float v, char *out) {
 void log_new_kinds(long calls) {
     for (int i = 0; i < g_found_n && g_kinds_seen_n < kKindsLogged; i++) {
         const Enemy &e = g_found[i];
-        uint64_t kind;
+        uint64_t kind = 0;
         std::memcpy(&kind, e.kind, sizeof kind);
         bool seen = false;
         for (int k = 0; k < g_kinds_seen_n && !seen; k++) seen = g_kinds_seen[k] == kind;

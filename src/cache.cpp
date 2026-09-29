@@ -64,7 +64,7 @@ Status load(uint64_t fp, Offsets &out) {
     buf[n] = 0;
 
     if (std::strncmp(buf, kTag, sizeof kTag - 1) != 0) return Status::BadVersion;  // not our line at all
-    const char *s = buf + sizeof kTag - 1, *e;
+    const char *s = buf + sizeof kTag - 1, *e = nullptr;
     if (hex64(s, &e) != kVersion || *e != ' ') return Status::BadVersion;
     if (hex64(e + 1, &e) != fp || *e != ' ') return Status::BadFingerprint;
 
@@ -98,7 +98,7 @@ void save(uint64_t fp, const Offsets &o) {
                       hi32(fp), lo32(fp), static_cast<unsigned long>(o.get_player),
                       static_cast<unsigned long>(o.get_player_lookup), static_cast<unsigned long>(o.runner),
                       static_cast<unsigned long>(o.sonar));
-    DWORD written;
+    DWORD written = 0;
     WriteFile(h, line, static_cast<DWORD>(n), &written, nullptr);
     CloseHandle(h);
 }

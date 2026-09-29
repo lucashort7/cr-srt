@@ -34,13 +34,15 @@ void write(const char *fmt, ...) {
     GetLocalTime(&t);
     char buf[1100];  // wvsprintfA writes at most 1024
     int n = wsprintfA(buf, "%04d-%02d-%02d %02d:%02d:%02d ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    // va_start is what initializes it, and va_list is a pointer only on this target.
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     va_list ap;
     va_start(ap, fmt);
     n += wvsprintfA(buf + n, fmt, ap);
     va_end(ap);
     buf[n++] = '\r';
     buf[n++] = '\n';
-    DWORD written;
+    DWORD written = 0;
     WriteFile(h, buf, static_cast<DWORD>(n), &written, nullptr);
     CloseHandle(h);
 }

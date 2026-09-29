@@ -141,7 +141,7 @@ void faction_label(uint32_t hash, char *out, size_t cap) {
 
 // "artillery", "moldbag_melee?" for a guess, or the kind's first four hex digits (all sixteen when `whole`).
 void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
-    uint64_t k;
+    uint64_t k = 0;
     std::memcpy(&k, kind, sizeof k);
     for (const auto &n : game::kKinds)
         if (n.hash == k) {

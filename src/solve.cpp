@@ -16,7 +16,7 @@ unsigned long off(const void *p, HMODULE exe) {
 // get_player is one of 14 sibling instantiations with the same prologue, 0x220 apart. What tells the player's apart
 // is kPlayerTag at its lookup site, which is unique in the exe: find the site, then walk back to the last prologue.
 uintptr_t get_player(HMODULE exe, uintptr_t *lookup) {
-    const uint8_t *lo, *hi, *hit[4];
+    const uint8_t *lo = nullptr, *hi = nullptr, *hit[4];
     if (!pe::text_section(exe, &lo, &hi)) {
         log::write("scan: no executable section");
         return 0;
@@ -59,7 +59,7 @@ uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
             continue;
         }
         if (!(s.Characteristics & IMAGE_SCN_MEM_READ) || str) continue;
-        const uint8_t *hit;
+        const uint8_t *hit = nullptr;
         if (pe::scan(lo, hi, name, &hit, 1) > 0) {
             while (hit > lo && hit[-1] != 0) hit--;  // the lea targets the start of the whole string
             str = hit;

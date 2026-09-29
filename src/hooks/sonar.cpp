@@ -64,7 +64,7 @@ bool read_name(const uint8_t *db, uint32_t hash, char *out, size_t cap) {
     if (!mem::copy(array, g_catalogue, count * game::kDistrictStride)) return false;
     for (uint32_t i = 0; i < count; i++) {
         const uint8_t *e = g_catalogue + i * game::kDistrictStride;
-        uint32_t h;
+        uint32_t h = 0;
         std::memcpy(&h, e + game::kDistrictHash, 4);
         if (h != hash) continue;
         const char *name = reinterpret_cast<const char *>(e + game::kDistrictName);
@@ -90,7 +90,7 @@ bool read_level(const uint8_t *runtime, uint32_t hash, District &d) {
         return false;
     for (uint32_t i = 0; i < count; i++) {
         const uint8_t *r = g_records + i * game::kRuntimeStride;
-        uint32_t h, max_level, levels, xp;
+        uint32_t h = 0, max_level = 0, levels = 0, xp = 0;
         std::memcpy(&h, r + game::kRecordHash, 4);
         if (h != hash) continue;
         std::memcpy(&max_level, r + game::kRecordMaxLevel, 4);
