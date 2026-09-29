@@ -55,8 +55,8 @@ inline constexpr uint32_t kHealthFlags = 0x6432f1af;
 inline constexpr uint32_t kDead = 0x6e63a89c;
 inline constexpr uint32_t kHealthComponent = 0xa471f608;  // contentgame::HealthComponent, crheal's h_hc
 inline constexpr uint32_t kRegeneration = 0x8b9bc037;
-inline constexpr uint32_t kCombatStatus =
-    0x17560154;  // written by player_status::update_combat_status from the living NPCEnemy rows
+// Written by player_status::update_combat_status from the living NPCEnemy rows.
+inline constexpr uint32_t kCombatStatus = 0x17560154;
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
 inline constexpr uint32_t kDebugName = 0x0bca075d;    // coregame::component::DebugName, 16 bytes
 inline constexpr uint32_t kNpcLevel = 0x712eb585;     // heron::leveling::component::NPCLevel, 8 bytes
