@@ -10,6 +10,8 @@ std::span<const IMAGE_SECTION_HEADER> sections(HMODULE module) {
 }
 
 bool text_section(HMODULE module, const uint8_t **lo, const uint8_t **hi) {
+    // A search that writes the section's bounds, not a test: any_of would need a lambda with side effects.
+    // NOLINTNEXTLINE(readability-use-anyofallof)
     for (const IMAGE_SECTION_HEADER &s : sections(module)) {
         if (!(s.Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
         *lo = reinterpret_cast<const uint8_t *>(module) + s.VirtualAddress;

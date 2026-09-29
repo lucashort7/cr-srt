@@ -41,7 +41,11 @@ uint64_t fingerprint(HMODULE exe) {
                                 nt->OptionalHeader.CheckSum};
     auto *p = reinterpret_cast<const uint8_t *>(fields);
     uint64_t h = 0xcbf29ce484222325ULL;
+    // The hash walks the three fields byte by byte, so sizeof over the array is the count meant.
+    // NOLINTNEXTLINE(bugprone-sizeof-expression)
     for (size_t i = 0; i < sizeof fields; i++) {
+        // The analyzer does not follow the byte pointer back to the initialized array.
+        // NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Assign)
         h ^= p[i];
         h *= 0x100000001b3ULL;
     }

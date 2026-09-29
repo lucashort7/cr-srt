@@ -232,6 +232,8 @@ bool view_proj(float m[16], const player::State &p) {
     int tries = 0;
     do {
         if (!mem::copy(matrix, a, sizeof a) || !mem::copy(matrix, b, sizeof b)) return false;
+        // Byte equality is the test: two reads that differ in any byte are a torn copy, whatever the doubles say.
+        // NOLINTNEXTLINE(bugprone-suspicious-memory-comparison)
     } while (std::memcmp(a, b, sizeof a) != 0 && ++tries < 4);
     if (tries == 4) return false;
     double w = 0.0;
