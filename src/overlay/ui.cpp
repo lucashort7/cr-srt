@@ -138,6 +138,22 @@ void faction_label(uint32_t hash, char *out, size_t cap) {
     std::snprintf(out, cap, "%04x", static_cast<unsigned>(hash >> 16));
 }
 
+// "artillery", "moldbag_melee?" for a guess, or the kind's first four hex digits (all sixteen when `whole`).
+void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
+    uint64_t k;
+    std::memcpy(&k, kind, sizeof k);
+    for (const auto &n : game::kKinds)
+        if (n.hash == k) {
+            std::snprintf(out, cap, "%s%s", n.name, n.guess ? "?" : "");
+            return;
+        }
+    if (whole)
+        std::snprintf(out, cap, "%02x%02x%02x%02x%02x%02x%02x%02x", kind[0], kind[1], kind[2], kind[3], kind[4],
+                      kind[5], kind[6], kind[7]);
+    else
+        std::snprintf(out, cap, "%02x%02x", kind[0], kind[1]);
+}
+
 bool shown(const enemies::Enemy &e) { return e.distance < 0.0f || e.distance <= static_cast<float>(g_radius); }
 
 // A bar `fraction` full on a dark track.
@@ -177,14 +193,14 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
     for (int i = 0; i < g_list.count && drawn < g_rows; i++) {
         const enemies::Enemy &e = g_list.rows[i];
         if (!shown(e)) continue;
-        char faction[16];
+        char faction[16], kind[40];
         faction_label(e.faction, faction, sizeof faction);
+        kind_label(e.kind, false, kind, sizeof kind);
         if (e.distance < 0.0f)
-            std::snprintf(text, sizeof text, "%s %02x%02x  lv%d", faction, e.kind[0], e.kind[1],
-                          static_cast<int>(e.level));
+            std::snprintf(text, sizeof text, "%s %s  lv%d", faction, kind, static_cast<int>(e.level));
         else
-            std::snprintf(text, sizeof text, "%s %02x%02x  lv%d  %.0fm", faction, e.kind[0], e.kind[1],
-                          static_cast<int>(e.level), e.distance);
+            std::snprintf(text, sizeof text, "%s %s  lv%d  %.0fm", faction, kind, static_cast<int>(e.level),
+                          e.distance);
         text_at(ImVec2(at.x, y), px, text);
         y += px + std::floor(px * 0.2f);  // clear of the text, so the shield does not read as an underline
         const bool shielded = e.shield_max > 0 && e.shield_fraction > 0.0f;
@@ -243,7 +259,7 @@ void labels(float w, float h, float px, const player::State &p, bool stale) {
     float m[16];
     if (stale || !view_proj(m, p)) return;
     const float lpx = number_px(px);
-    char text[48];
+    char text[72];
     for (int i = 0; i < g_list.count; i++) {
         const enemies::Enemy &e = g_list.rows[i];
         if (!shown(e)) continue;
@@ -254,10 +270,10 @@ void labels(float w, float h, float px, const player::State &p, bool stale) {
         if (!(cw > 1e-4f)) continue;  // behind the camera
         const float nx = cx / cw, ny = cy / cw;
         if (std::fabs(nx) > 1.0f || std::fabs(ny) > 1.0f) continue;
-        char faction[16];
+        char faction[16], kind[40];
         faction_label(e.faction, faction, sizeof faction);
-        std::snprintf(text, sizeof text, "%s %02x%02x%02x%02x%02x%02x%02x%02x", faction, e.kind[0], e.kind[1],
-                      e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7]);
+        kind_label(e.kind, true, kind, sizeof kind);
+        std::snprintf(text, sizeof text, "%s %s", faction, kind);
         const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(lpx, FLT_MAX, 0.0f, text);
         text_at(ImVec2(std::floor((nx + 1.0f) * 0.5f * w - size.x * 0.5f), std::floor((1.0f - ny) * 0.5f * h + lpx * 0.3f)),
                 lpx, text);
