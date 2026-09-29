@@ -290,6 +290,8 @@ void frame(IDXGISwapChain *swapchain) {
     g_prev = now;
     ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
+    // Read off the height every frame: the resolution changes under a running overlay.
+    g_font_px = ui::font_px(io.DisplaySize.y);
     ui::draw(io.DisplaySize.x, io.DisplaySize.y, g_font_px, g_drawn);
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(),
