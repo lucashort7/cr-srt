@@ -92,6 +92,8 @@ struct Faction {
 inline constexpr Faction kFactions[] = {
     {0x4aac31a8, "hiss"},    {0x1d82b4ed, "mold"},       {0x2c99c300, "player"},
     {0x8c4b1ad8, "neutral"}, {0x20408545, "explosives"}, {0x175869f5, "hedron"},
+    // The player's summons, named by us: no candidate hashed to these (2026-09-29).
+    {0x538682a2, "ally:mold"}, {0xeae53489, "ally:anomaly"},
 };
 
 // --- What the pattern scans look for (solve.cpp), when the cache misses.
