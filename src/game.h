@@ -115,6 +115,7 @@ inline constexpr Kind kKinds[] = {
     CRSRT_KIND("artillery"), CRSRT_KIND("blob"), CRSRT_KIND("brute"), CRSRT_KIND("enraged"), CRSRT_KIND("glider"),
     CRSRT_KIND("healer"), CRSRT_KIND("hermit"), CRSRT_KIND("master"), CRSRT_KIND("plague"), CRSRT_KIND("pursuer"),
     CRSRT_KIND("ranger"), CRSRT_KIND("sniper"), CRSRT_KIND("soldier"), CRSRT_KIND("spitter"), CRSRT_KIND("spore"),
+    CRSRT_KIND("leviathan"),
     // In the database, hash unmet so far.
     CRSRT_KIND("brute_overshield"), CRSRT_KIND("brute_arcs_friendly"), CRSRT_KIND("pursuer_friendly"),
     CRSRT_KIND("healer_overshield"), CRSRT_KIND("glider_overshield"), CRSRT_KIND("mini_blob"),
