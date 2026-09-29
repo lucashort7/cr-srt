@@ -150,9 +150,12 @@ bool build(const DXGI_SWAP_CHAIN_DESC &d) {
            ok(g_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_alloc[0], nullptr, IID_PPV_ARGS(&g_list)),
               "command list") &&
            ok(g_list->Close(), "first Close");
-    if (good && !(g_fence_event = CreateEventW(nullptr, FALSE, FALSE, nullptr))) {
-        log::write("overlay: CreateEvent failed");
-        good = false;
+    if (good) {
+        g_fence_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!g_fence_event) {
+            log::write("overlay: CreateEvent failed");
+            good = false;
+        }
     }
     if (!good) {
         release_all();
@@ -280,9 +283,9 @@ void frame(IDXGISwapChain *swapchain) {
     io.DisplaySize = ImVec2(static_cast<float>(d.BufferDesc.Width), static_cast<float>(d.BufferDesc.Height));
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    float dt = g_prev.QuadPart
-                   ? static_cast<float>(static_cast<double>(now.QuadPart - g_prev.QuadPart) / g_qpf.QuadPart)
-                   : 0.0f;
+    float dt = g_prev.QuadPart ? static_cast<float>(static_cast<double>(now.QuadPart - g_prev.QuadPart) /
+                                                    static_cast<double>(g_qpf.QuadPart))
+                               : 0.0f;
     io.DeltaTime = dt > 0.0f ? dt : 1.0f / 60.0f;
     g_prev = now;
     ImGui_ImplDX12_NewFrame();

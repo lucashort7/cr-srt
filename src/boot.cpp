@@ -23,7 +23,11 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
     log::write("fp %08lx%08lx cache %s", static_cast<unsigned long>(fp >> 32),
                static_cast<unsigned long>(fp & 0xffffffffUL), cache::describe(st));
     if (st == cache::Status::Hit) {
-        if (!o.sonar && (o.sonar = solve::system(exe, game::kSonarName, "sonar"))) cache::save(fp, o);  // optional key
+        // optional key
+        if (!o.sonar) {
+            o.sonar = solve::system(exe, game::kSonarName, "sonar");
+            if (o.sonar) cache::save(fp, o);
+        }
         return true;
     }
 

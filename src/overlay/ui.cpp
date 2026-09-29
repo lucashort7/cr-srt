@@ -253,8 +253,8 @@ bool view_proj(float m[16], const player::State &p) {
         const float cy = x * m[1] + y * m[5] + z * m[9] + m[13];
         const float cw = x * m[3] + y * m[7] + z * m[11] + m[15];
         char row[160];  // log::write is wsprintf, which has no floats
-        std::snprintf(row, sizeof row, "player at clip %g %g w %g -> screen %.3f %.3f", cx, cy, cw, cw ? cx / cw : 0.0f,
-                      cw ? cy / cw : 0.0f);
+        std::snprintf(row, sizeof row, "player at clip %g %g w %g -> screen %.3f %.3f", cx, cy, cw,
+                      cw != 0.0f ? cx / cw : 0.0f, cw != 0.0f ? cy / cw : 0.0f);
         log::write("labels: matrix at %p kept: %s", matrix, row);
     }
     return true;
