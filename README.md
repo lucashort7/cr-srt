@@ -17,6 +17,7 @@ wrapper to draw with Dear ImGui on the game's own D3D12 device, right before eac
 | :--- | :--- |
 | `src/dllmain.cpp` | the entry, and the boot: cache or solve, then hook |
 | `src/game.h` | every offset, hash and pattern that belongs to the game; a patch changes this file |
+| `src/names.h` | what a faction and a kind are called: two tables written by hand, grown as the game is played |
 | `src/cache.*`, `src/solve.*`, `src/pe.*` | exe offsets: cached per build, found by pattern on a miss |
 | `src/ecs.*`, `src/player.*` | reading the ECS world: archetype, chunk, a component's row |
 | `src/hooks/runner.*` | the per-tick hook that reads the player's rows and publishes them, with the world, to the overlay and the walk |
