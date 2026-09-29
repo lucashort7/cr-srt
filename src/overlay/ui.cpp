@@ -210,7 +210,9 @@ void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
         const bool shielded = e.shield_max > 0 && e.shield_fraction > 0.0f;
         if (shielded) bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
         const float bar_y = y + shield_h + 1.0f;
-        bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, IM_COL32(210, 50, 40, 230));
+        // An ally keeps its place in the list and takes the cyan the game draws over its own allies.
+        const ImU32 fill = game::is_ally(e.faction) ? IM_COL32(28, 255, 255, 230) : IM_COL32(210, 50, 40, 230);
+        bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, fill);
         const int hp = game::points(e.fraction, e.max);
         if (shielded)
             std::snprintf(text, sizeof text, "%d / %d  +%d", hp, static_cast<int>(e.max),

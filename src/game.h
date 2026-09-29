@@ -91,6 +91,8 @@ struct Faction {
     uint32_t hash;
     const char *name;
 };
+inline constexpr uint32_t kFactionAlly = 0x538682a2;
+inline constexpr uint32_t kFactionAnomaly = 0xeae53489;
 inline constexpr Faction kFactions[] = {
     {0x4aac31a8, "hiss"},
     {0x1d82b4ed, "mold"},
@@ -100,9 +102,10 @@ inline constexpr Faction kFactions[] = {
     {0x175869f5, "hedron"},
     // The player's summons, named by us: no candidate hashed to these (2026-09-29). The first is every companion,
     // Growth's tower and the Hedron sphere alike, and the kind tells which; the Volatile Anomaly has its own.
-    {0x538682a2, "ally"},
-    {0xeae53489, "ally:anomaly"},
+    {kFactionAlly, "ally"},
+    {kFactionAnomaly, "ally:anomaly"},
 };
+constexpr bool is_ally(uint32_t faction) { return faction == kFactionAlly || faction == kFactionAnomaly; }
 
 // --- A kind's name. The kind at SpawnedNPC+0x30 is FNV-1a 64 of the lowercase internal name, read little-endian; the
 // names come from the encounter database in the heap (control-resonant-modding/tools/kindnames.py, 2026-09-29). An
