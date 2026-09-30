@@ -5,17 +5,55 @@
 
 namespace crsrt::mem {
 
+// VirtualQuery's own time: it takes the process's address-space lock, the one the game's allocator holds while it
+// spawns, so its wait is the suspect for a stutter (AKTH-0111, 2026-09-30). Read and reset by query_meter.
 namespace {
+volatile LONG64 g_vq_calls, g_vq_us, g_vq_max_us;
+const LONG64 g_hz = [] {
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    return f.QuadPart;
+}();
+
 bool query(const void *p, MEMORY_BASIC_INFORMATION &mbi) {
-    if (!p || VirtualQuery(p, &mbi, sizeof mbi) == 0) return false;
+    if (!p) return false;
+    LARGE_INTEGER a, b;
+    QueryPerformanceCounter(&a);
+    const SIZE_T got = VirtualQuery(p, &mbi, sizeof mbi);
+    QueryPerformanceCounter(&b);
+    const LONG64 us = (b.QuadPart - a.QuadPart) * 1000000 / g_hz;
+    InterlockedIncrement64(&g_vq_calls);
+    InterlockedAdd64(&g_vq_us, us);
+    LONG64 seen = g_vq_max_us;
+    while (us > seen && InterlockedCompareExchange64(&g_vq_max_us, us, seen) != seen) seen = g_vq_max_us;
+    if (got == 0) return false;
     return mbi.State == MEM_COMMIT && !(mbi.Protect & PAGE_GUARD) && mbi.Protect != PAGE_NOACCESS;
 }
 }  // namespace
 
+void query_meter(long long *calls, long long *avg_us, long long *max_us) {
+    const LONG64 c = InterlockedExchange64(&g_vq_calls, 0), t = InterlockedExchange64(&g_vq_us, 0);
+    *max_us = InterlockedExchange64(&g_vq_max_us, 0);
+    *calls = c;
+    *avg_us = c ? t / c : 0;
+}
+
+// Proved by reading, not by asking: ReadProcessMemory on our own process fails cleanly on a page that is not there
+// and walks no VAD tree. VirtualQuery here cost 212 us on average under the game's spawning (9 000 calls in 20 s,
+// 2026-09-30 18:32), a queue on the address-space lock the allocator also takes; this is ~1 us.
 bool readable(const void *p, size_t len) {
-    MEMORY_BASIC_INFORMATION mbi;
-    if (!query(p, mbi)) return false;
-    return static_cast<const char *>(p) + len <= static_cast<const char *>(mbi.BaseAddress) + mbi.RegionSize;
+    if (!p || !len) return false;
+    alignas(16) char scratch[4096];
+    const char *at = static_cast<const char *>(p);
+    size_t left = len;
+    while (left) {
+        const size_t n = left < sizeof scratch ? left : sizeof scratch;
+        SIZE_T got = 0;
+        if (!ReadProcessMemory(GetCurrentProcess(), at, scratch, n, &got) || got != n) return false;
+        at += n;
+        left -= n;
+    }
+    return true;
 }
 
 size_t readable_run(const void *p) {

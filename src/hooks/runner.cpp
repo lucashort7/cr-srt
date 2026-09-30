@@ -141,6 +141,10 @@ void log_meters(LONG n) {
         m.max_call = 0;
     }
     log::write("runner: us over 600 calls: %s (call %ld)", line, static_cast<long>(n));
+    long long vq_calls = 0, vq_avg = 0, vq_max = 0;
+    mem::query_meter(&vq_calls, &vq_avg, &vq_max);
+    log::write("runner: VirtualQuery %ld calls, avg %ld us, max %ld us, all threads, since the last line",
+               static_cast<long>(vq_calls), static_cast<long>(vq_avg), static_cast<long>(vq_max));
 }
 
 void hk_runner(void *a, void *b, void *c, void *d) {

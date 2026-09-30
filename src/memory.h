@@ -17,6 +17,9 @@ size_t readable_run(const void *p);
 // memory mid-copy. For memory the game's worker threads own: chunks, type and offset tables.
 bool copy(const void *p, void *out, size_t n);
 
+// VirtualQuery calls since the last call, their mean and their max in microseconds; resets. All threads.
+void query_meter(long long *calls, long long *avg_us, long long *max_us);
+
 // Committed and executable.
 bool is_code(const void *p);
 

@@ -145,16 +145,32 @@ bool row_readable(uint64_t chunk, uint32_t offset, uint32_t size, size_t run) {
     return mem::readable(reinterpret_cast<const void *>(chunk + offset), size);
 }
 
+// The bytes the memo's rows span from the Health row, read once with ReadProcessMemory to prove them: a VirtualQuery
+// here cost 0.5 ms on average under the game's spawning (2026-09-30, AKTH-0111), a queue on the address-space lock.
+size_t span_readable(uint64_t chunk) {
+    uint32_t end = g_memo.health + game::kHealthRowSize;
+    const uint32_t rows[][2] = {{g_memo.transform, game::kWorldTransformRowSize},
+                                {g_memo.movement, game::kMovementRowSize},
+                                {g_memo.state, game::kMovementStateRowSize},
+                                {g_memo.gap, game::kInGapRowSize},
+                                {g_memo.status, game::kStatusRowSize},
+                                {g_memo.logic, game::kLogicDataProbe}};
+    for (const auto &r : rows)
+        if (r[0] != kAbsent && r[0] >= g_memo.health && r[0] + r[1] > end) end = r[0] + r[1];
+    const size_t span = end - g_memo.health;
+    return mem::readable(reinterpret_cast<const void *>(chunk + g_memo.health), span) ? span : 0;
+}
+
 // The memo resolved for get_player's chunk with its Health row readable, and the bytes readable from that row; 0 when
 // not. A kept memo whose row is unreadable is wrong: the scan decides.
 size_t locate(void *world, uint64_t *chunk_out) {
     const uint64_t chunk = player_chunk(world);
     if (!chunk) return 0;
     Resolved r = resolve(world, chunk, false);
-    size_t run = r != kFailed ? mem::readable_run(reinterpret_cast<const void *>(chunk + g_memo.health)) : 0;
+    size_t run = r != kFailed ? span_readable(chunk) : 0;
     if (r == kKept && run < 8) {
         r = resolve(world, chunk, true);
-        run = r != kFailed ? mem::readable_run(reinterpret_cast<const void *>(chunk + g_memo.health)) : 0;
+        run = r != kFailed ? span_readable(chunk) : 0;
     }
     if (run < 8) return 0;
     *chunk_out = chunk;
