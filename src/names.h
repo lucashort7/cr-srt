@@ -94,6 +94,7 @@ inline constexpr Kind kKinds[] = {
     // A named elite (the HUD gives it a boss_name_generic_* name, "JUHA" 2026-09-30): no record in the encounter
     // database in two scans, no candidate hashes to it. Lucas's word for the tier.
     {0xba50a0bb3a1fa5d7ull, "elite", Source::Seen},
+    {0xae00422c803fcc89ull, "elite", Source::Seen},  // "ADAM", 36407 hp lv9 in the Pattern wave challenge
 };
 #undef CRSRT_KIND
 static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
