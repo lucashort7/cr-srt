@@ -28,6 +28,7 @@ std::atomic<bool> g_paused{false};
 int g_paused_logged = -1;  // -1: not yet
 std::atomic<bool> g_challenge{false};
 std::atomic<float> g_challenge_elapsed{0.0f};
+std::atomic<uint32_t> g_challenge_machine{0};
 int g_challenge_logged = -1;
 
 // The three bitset qwords as the log last saw them.
@@ -93,14 +94,16 @@ void hk_challenge(void *a, void *b, void *c, void *d) {
             runner::log_env_tray("challenge", c, game::kChallengeSlots);
         }
         const uint8_t *tray = nullptr, *info = nullptr;
-        uint32_t active = 0;
+        uint32_t active = 0, machine = 0;
         float elapsed = 0.0f;
         if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray) &&
             mem::copy(tray + game::kChallengeInfo, &info, sizeof info) && info &&
             mem::copy(info + game::kChallengeActive, &active, sizeof active) &&
+            mem::copy(info + game::kChallengeMachine, &machine, sizeof machine) &&
             mem::copy(info + game::kChallengeElapsed, &elapsed, sizeof elapsed)) {
             g_challenge = active == 1;
             g_challenge_elapsed = elapsed;
+            g_challenge_machine = machine;
             if (static_cast<int>(active == 1) != g_challenge_logged) {
                 log::write("uistate: %s (call %ld)", active == 1 ? "a challenge runs" : "no challenge",
                            static_cast<long>(n));
@@ -190,8 +193,9 @@ bool install_challenge(HMODULE exe, uintptr_t update_score_offset) {
 
 bool paused() { return g_paused.load(); }
 
-bool challenge(float *elapsed) {
+bool challenge(float *elapsed, uint32_t *machine) {
     *elapsed = g_challenge_elapsed.load();
+    *machine = g_challenge_machine.load();
     return g_challenge.load();
 }
 

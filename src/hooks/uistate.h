@@ -20,8 +20,9 @@ bool install_challenge(HMODULE exe, uintptr_t update_score_offset);
 // AudioPause's flag as the last call read it: a hub screen or the pause menu is open. Any thread.
 bool paused();
 
-// ChallengeModeInfo as the last call read it: a challenge is running, and its elapsed seconds. Any thread.
-bool challenge(float *elapsed);
+// ChallengeModeInfo as the last call read it: a challenge is running, its elapsed seconds (or score) and the hash
+// that names the machine (names::kMachines). Any thread.
+bool challenge(float *elapsed, uint32_t *machine);
 
 // Threads inside either hook right now; the unloader waits for 0 before unmapping.
 long inflight();

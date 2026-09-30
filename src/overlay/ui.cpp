@@ -143,6 +143,15 @@ void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
         std::snprintf(out, cap, "%02x%02x", kind[0], kind[1]);
 }
 
+// "central_trial", or the machine's hash when the table lacks it.
+const char *machine_label(uint32_t hash) {
+    for (const auto &m : names::kMachines)
+        if (m.hash == hash) return m.name;
+    static char hex[12];
+    std::snprintf(hex, sizeof hex, "%08x", static_cast<unsigned>(hash));
+    return hex;
+}
+
 bool shown(const enemies::Enemy &e) { return e.distance < 0.0f || e.distance <= static_cast<float>(g_radius); }
 
 // The size of the labels at the enemies' feet.
@@ -244,10 +253,11 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     char s[96];
     // The sonar names no district in the Gap or in a challenge; the player's InGap flag and ChallengeModeInfo do.
     float elapsed = 0.0f;
+    uint32_t machine = 0;
     if (!g_shown.has && !stale && p.in_gap)
         std::snprintf(s, sizeof s, "zone: THE_GAP");
-    else if (!g_shown.has && uistate::challenge(&elapsed))
-        std::snprintf(s, sizeof s, "zone: CHALLENGE");
+    else if (!g_shown.has && uistate::challenge(&elapsed, &machine))
+        std::snprintf(s, sizeof s, "zone: CHALLENGE %s", machine_label(machine));
     else if (!g_shown.has)
         std::snprintf(s, sizeof s, "zone: --");
     else if (g_shown.level == 0)

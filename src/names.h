@@ -93,11 +93,22 @@ inline constexpr Kind kKinds[] = {
     {0xa418d99ab84ff184ull, "astral_spike", Source::Seen},
     {0x74cea16c9c24e0baull, "volatile_anomaly", Source::Seen},
     // A named elite (the HUD gives it a boss_name_generic_* name, "JUHA" 2026-09-30): no record in the encounter
-    // database in two scans, no candidate hashes to it. Lucas's word for the tier, base kind unknown. "ADAM" (2026-09-30) was a plain
-    // leviathan by kind: a boss name does not imply a kind of its own.
+    // database in two scans, no candidate hashes to it. Lucas's word for the tier, base kind unknown. "ADAM"
+    // (2026-09-30) was a plain leviathan by kind: a boss name does not imply a kind of its own.
     {0xba50a0bb3a1fa5d7ull, "elite", Source::Seen},
 };
 #undef CRSRT_KIND
 static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
+
+// --- Arcade machines, by ChallengeModeInfo+0x10: no candidate of the 10 765 names in the encounter database hashes
+// to one (2026-09-30), so each is named by its zone and what its cabinet runs, as Lucas saw it.
+struct Machine {
+    uint32_t hash;
+    const char *name;
+};
+inline constexpr Machine kMachines[] = {
+    {0xe8187e3d, "central_trial"},  // SHUM III, a checkpoint time trial with traps, 3 minutes at most
+    {0x74641c62, "pattern_waves"},  // SHUM III, survive the encounter waves, scored
+};
 
 }  // namespace crsrt::names
