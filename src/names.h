@@ -102,6 +102,9 @@ inline constexpr Kind kKinds[] = {
     // beside boss_name_generic_sniper_* in memory. "ADAM" (2026-09-30) was a plain leviathan by kind: a boss name does
     // not imply a kind of its own.
     {0xba50a0bb3a1fa5d7ull, "sniper_elite", Source::Seen},
+    {0x2279fa96f365c023ull, "hedron_factor",
+     Source::Seen},  // "HEDRON FACTOR", the first sequence's boss, 39052 hp lvl 8
+    {0x2279fa36f365c023ull, "hedron_spawn", Source::Seen},  // seen with it, 5997 hp at level 1
     {0x58474eec591376a0ull, "specimen", Source::Seen},  // "SPECIMEN A" and "B", a Mold quest boss, 20947 hp at level 7
 };
 #undef CRSRT_KIND

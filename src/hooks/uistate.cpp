@@ -51,32 +51,47 @@ void bits(void *ctx, LONG n) {
     std::memcpy(g_bits, now, sizeof now);
 }
 
-// An env's first 64 bytes as hex, logged when they change: the probe's eye on a tray slot.
+// An env's first kEnvWatchBytes, diffed on each read: the qwords that moved, offset and old -> new, so a change past
+// the first 64 bytes is seen (a skippable cutscene moved nothing in TimelineCinematicsControl's first 64, 2026-09-30).
+constexpr int kEnvWatchBytes = 512;
 struct EnvWatch {
     const char *name;
     uintptr_t slot;
     bool follow;  // the slot holds a r::Ptr: read the object it points at
-    uint8_t seen[64];
+    uint8_t seen[kEnvWatchBytes];
     bool ever;
 };
 
 void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
     const uint8_t *env = nullptr;
-    uint8_t now[64];
+    uint8_t now[kEnvWatchBytes];
     if (!mem::copy(tray + w.slot, &env, sizeof env) || !env) return;
     if (w.follow && (!mem::copy(env, &env, sizeof env) || !env)) return;
-    if (!mem::copy(env, now, sizeof now) || (w.ever && std::memcmp(now, w.seen, sizeof now) == 0)) return;
-    char text[8 * 17 + 8];
-    for (int i = 0; i < 8; i++) {
-        uint64_t v = 0;
-        std::memcpy(&v, now + i * 8, 8);
-        hex64(v, text + i * 17);
-        text[i * 17 + 16] = ' ';
+    if (!mem::copy(env, now, sizeof now)) return;
+    if (!w.ever) {
+        std::memcpy(w.seen, now, sizeof now);
+        w.ever = true;
+        log::write("uistate: %s at %p: %d bytes watched (call %ld)", w.name, env, kEnvWatchBytes, static_cast<long>(n));
+        return;
     }
-    text[8 * 17] = 0;
-    log::write("uistate: %s at %p: %s(call %ld)", w.name, env, text, static_cast<long>(n));
+    if (std::memcmp(now, w.seen, sizeof now) == 0) return;
+    char line[6 * 44 + 8];
+    size_t k = 0;
+    int shown = 0;
+    for (int off = 0; off < kEnvWatchBytes; off += 8) {
+        if (std::memcmp(now + off, w.seen + off, 8) == 0) continue;
+        uint64_t was = 0, is = 0;
+        std::memcpy(&was, w.seen + off, 8);
+        std::memcpy(&is, now + off, 8);
+        k += std::snprintf(line + k, sizeof line - k, "%s+%03x %016llx>%016llx", k ? " " : "", off,
+                           static_cast<unsigned long long>(was), static_cast<unsigned long long>(is));
+        if (++shown % 6 == 0) {
+            log::write("uistate: %s diff %s (call %ld)", w.name, line, static_cast<long>(n));
+            k = 0;
+        }
+    }
+    if (k) log::write("uistate: %s diff %s (call %ld)", w.name, line, static_cast<long>(n));
     std::memcpy(w.seen, now, sizeof now);
-    w.ever = true;
 }
 
 // The hud_visibility envs watched for the world kind (AKTH-0110): the tower interior with no map is the probe.
