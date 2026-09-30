@@ -101,6 +101,7 @@ inline constexpr Kind kKinds[] = {
     // beside boss_name_generic_sniper_* in memory. "ADAM" (2026-09-30) was a plain leviathan by kind: a boss name does
     // not imply a kind of its own.
     {0xba50a0bb3a1fa5d7ull, "sniper_elite", Source::Seen},
+    {0x58474eec5913760aull, "specimen", Source::Seen},  // "SPECIMEN A", a Mold quest boss, 20947 hp at level 7
 };
 #undef CRSRT_KIND
 static_assert(fnv1a64("artillery") == 0x75689b4f8f103711ull, "the artillery kind read in the walk");
