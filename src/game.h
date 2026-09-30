@@ -80,6 +80,8 @@ inline constexpr uint32_t kLogicDataProbe = 2064;  // the column's width at arch
 // 17:18-17:19).
 inline constexpr uint32_t kLogicStoryByte = 0x42c;
 inline constexpr uint8_t kLogicStoryBlocked = 2;
+// kDead above is the player's too: the tag arrives with the killing blow and leaves with the respawn's load (arch
+// 1913 -> 742 gained it, 943 -> 1243 lost it; one death, 2026-09-30 17:46).
 inline constexpr uint32_t kStatusRowSize = 8;
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
 inline constexpr uint32_t kDebugName = 0x0bca075d;    // coregame::component::DebugName, 16 bytes

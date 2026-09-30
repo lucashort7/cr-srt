@@ -125,6 +125,13 @@ void log_logic(const player::State &s, LONG n) {
     std::memcpy(g_logic_seen, s.logic, sizeof g_logic_seen);
 }
 
+int g_dead_logged = -1;
+void log_dead(const player::State &s, LONG n) {
+    if (static_cast<int>(s.dead) == g_dead_logged) return;
+    g_dead_logged = s.dead;
+    log::write("player: %s (call %ld)", s.dead ? "dead" : "alive", static_cast<long>(n));
+}
+
 int g_story_logged = -1;
 void log_story(const player::State &s, LONG n) {
     if (!s.has_logic || static_cast<int>(s.in_story) == g_story_logged) return;
@@ -195,6 +202,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         meter(kRead, t1 - t, n), t = t1;
         log_logic(s, n);
         log_story(s, n);
+        log_dead(s, n);
         motion::sample(s, n);
         t1 = now_us();
         meter(kMotion, t1 - t, n), t = t1;

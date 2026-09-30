@@ -288,8 +288,8 @@ void player_section(Pen &pen, const player::State &p, bool stale) {
         std::snprintf(s, sizeof s, "hp: -- / -- [--%%] (--/--)");
     } else {
         const int hp = game::points(p.fraction, p.max);
-        std::snprintf(s, sizeof s, "hp: %d / %d [%d%%] (--/--)", hp, static_cast<int>(p.max),
-                      static_cast<int>(static_cast<long long>(hp) * 100 / p.max));
+        std::snprintf(s, sizeof s, "hp: %d / %d [%d%%] (--/--)%s", hp, static_cast<int>(p.max),
+                      static_cast<int>(static_cast<long long>(hp) * 100 / p.max), p.dead ? " [dead]" : "");
     }
     line(pen, s);
     line(pen, "pw: -- / -- [--%] (--/--)");

@@ -58,6 +58,7 @@ struct EnvWatch {
     const char *name;
     uintptr_t slot;
     bool follow;  // the slot holds a r::Ptr: read the object it points at
+    int size;  // bytes watched, at most kEnvWatchBytes: the arena packs envs, past its own an env reads its neighbour
     uint8_t seen[kEnvWatchBytes];
     bool ever;
 };
@@ -67,18 +68,18 @@ void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
     uint8_t now[kEnvWatchBytes];
     if (!mem::copy(tray + w.slot, &env, sizeof env) || !env) return;
     if (w.follow && (!mem::copy(env, &env, sizeof env) || !env)) return;
-    if (!mem::copy(env, now, sizeof now)) return;
+    if (!mem::copy(env, now, w.size)) return;
     if (!w.ever) {
-        std::memcpy(w.seen, now, sizeof now);
+        std::memcpy(w.seen, now, w.size);
         w.ever = true;
-        log::write("uistate: %s at %p: %d bytes watched (call %ld)", w.name, env, kEnvWatchBytes, static_cast<long>(n));
+        log::write("uistate: %s at %p: %d bytes watched (call %ld)", w.name, env, w.size, static_cast<long>(n));
         return;
     }
-    if (std::memcmp(now, w.seen, sizeof now) == 0) return;
+    if (std::memcmp(now, w.seen, w.size) == 0) return;
     char line[6 * 44 + 8];
     size_t k = 0;
     int shown = 0;
-    for (int off = 0; off < kEnvWatchBytes; off += 8) {
+    for (int off = 0; off < w.size; off += 8) {
         if (std::memcmp(now + off, w.seen + off, 8) == 0) continue;
         uint64_t was = 0, is = 0;
         std::memcpy(&was, w.seen + off, 8);
@@ -91,19 +92,19 @@ void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
         }
     }
     if (k) log::write("uistate: %s diff %s (call %ld)", w.name, line, static_cast<long>(n));
-    std::memcpy(w.seen, now, sizeof now);
+    std::memcpy(w.seen, now, w.size);
 }
 
 // The hud_visibility envs watched for the world kind (AKTH-0110): the tower interior with no map is the probe.
 EnvWatch g_hud_watch[] = {
-    {"UIVisibility", 2 * 8, false, {}, false},
-    {"TimelineCinematicsControl", 5 * 8, false, {}, false},
-    {"GameState", 6 * 8, false, {}, false},  // an r::Ptr: a handle, not a pointer (following it read nothing)
-    {"JRPGState", game::kHudVisJRPGState, false, {}, false},
+    {"UIVisibility", 2 * 8, false, 0xb8, {}, false},
+    {"TimelineCinematicsControl", 5 * 8, false, 512, {}, false},
+    {"GameState", 6 * 8, false, 512, {}, false},  // an r::Ptr: a handle, not a pointer (following it read nothing)
+    {"JRPGState", game::kHudVisJRPGState, false, 0x70, {}, false},
 };
 EnvWatch g_challenge_watch[] = {
-    {"ChallengeModeInfo", 2 * 8, false, {}, false},
-    {"ChallengeModeHudState", 3 * 8, false, {}, false},
+    {"ChallengeModeInfo", 2 * 8, false, 512, {}, false},
+    {"ChallengeModeHudState", 3 * 8, false, 512, {}, false},
 };
 
 void hk_challenge(void *a, void *b, void *c, void *d) {

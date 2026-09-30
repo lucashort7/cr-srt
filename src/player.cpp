@@ -32,6 +32,7 @@ struct Memo {
     int64_t arch = -1;
     uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent, state = kAbsent;
     uint32_t gap = kAbsent, status = kAbsent, logic = kAbsent;
+    bool dead = false;
 } g_memo;
 
 int g_resolutions;
@@ -105,7 +106,10 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
               s < 0 ? kAbsent : a.offsets[s],
               g < 0 ? kAbsent : a.offsets[g],
               st < 0 ? kAbsent : a.offsets[st],
-              ld < 0 ? kAbsent : a.offsets[ld]};
+              ld < 0 ? kAbsent : a.offsets[ld],
+              false};
+    ecs::TypeList list;
+    g_memo.dead = ecs::type_list(w, index, list) && ecs::has_type(list, game::kDead);
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
                        was.transform != g_memo.transform || was.movement != g_memo.movement ||
                        was.state != g_memo.state || was.gap != g_memo.gap || was.status != g_memo.status ||
@@ -169,6 +173,7 @@ void read(void *world, State &out) {
     const size_t run = locate(world, &chunk);
     if (!run) return;
     out.arch = g_memo.arch;
+    out.dead = g_memo.dead;
     out.health_at = chunk + g_memo.health;
     out.has_health = true;
     out.fraction = at<float>(chunk + g_memo.health);
