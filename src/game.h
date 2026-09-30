@@ -69,6 +69,17 @@ inline constexpr uint32_t kInGapRowSize = 8;
 inline constexpr uint64_t kInGapFlag = 0xff;  // the mask of the flag byte in the row read as a u64
 // What hud_visibility::system reads off the player beside the envs, 8 bytes; meaning unread (AKTH-0110).
 inline constexpr uint32_t kStatus = 0x72d38548;  // heron::player_status::component::Status
+// heron::input_logic::component::LogicData: what heron::ui_player_mode::story_mode_notification::system reads to show
+// "Not While in Story Area" (the exe's getName, 2026-09-30). Row size unknown: the first 64 bytes of row 0 are logged
+// on change to find the story flag (cr-fact-find-the-story-mode-entry).
+inline constexpr uint32_t kLogicData = 0x9988f341;
+inline constexpr uint32_t kLogicDataProbe = 2064;  // the column's width at arch 1913, one row
+// LogicData is a table of input-action records (~40 bytes: a header, an index, a count, state bytes and the action's
+// hash). The record at +0x428 (action 3daa57a8) is the one story mode gates: its state bytes +0x42c/+0x42d read 01 01
+// in the world and 02 02 in a story area, 9 of 9 edges against Pocket Mixtape's `game state story` (2026-09-30
+// 17:18-17:19).
+inline constexpr uint32_t kLogicStoryByte = 0x42c;
+inline constexpr uint8_t kLogicStoryBlocked = 2;
 inline constexpr uint32_t kStatusRowSize = 8;
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
 inline constexpr uint32_t kDebugName = 0x0bca075d;    // coregame::component::DebugName, 16 bytes

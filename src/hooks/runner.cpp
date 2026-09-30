@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 
 namespace crsrt::runner {
 
@@ -91,6 +92,46 @@ void hex_text(uint64_t v, bool has, char *out) {
     std::snprintf(out, 24, "%016llx", static_cast<unsigned long long>(v));
 }
 
+// LogicData's first 64 bytes, logged when they change: the story-area probe (cr-fact-find-the-story-mode-entry).
+uint8_t g_logic_seen[sizeof(player::State::logic)];
+bool g_logic_ever;
+void log_logic(const player::State &s, LONG n) {
+    if (!s.has_logic) return;
+    if (!g_logic_ever) {
+        std::memcpy(g_logic_seen, s.logic, sizeof g_logic_seen);
+        g_logic_ever = true;
+        log::write("player: LogicData %d bytes watched (call %ld)", static_cast<int>(sizeof g_logic_seen),
+                   static_cast<long>(n));
+        return;
+    }
+    // Only the qwords that moved, offset and old -> new, up to 6 a line.
+    char line[6 * 44 + 8];
+    size_t k = 0;
+    int shown = 0;
+    for (size_t off = 0; off < sizeof g_logic_seen; off += 8) {
+        if (std::memcmp(s.logic + off, g_logic_seen + off, 8) == 0) continue;
+        uint64_t was = 0, now = 0;
+        std::memcpy(&was, g_logic_seen + off, 8);
+        std::memcpy(&now, s.logic + off, 8);
+        k += std::snprintf(line + k, sizeof line - k, "%s+%03x %016llx>%016llx", k ? " " : "",
+                           static_cast<unsigned>(off), static_cast<unsigned long long>(was),
+                           static_cast<unsigned long long>(now));
+        if (++shown % 6 == 0) {
+            log::write("player: LogicData diff %s (call %ld)", line, static_cast<long>(n));
+            k = 0;
+        }
+    }
+    if (k) log::write("player: LogicData diff %s (call %ld)", line, static_cast<long>(n));
+    std::memcpy(g_logic_seen, s.logic, sizeof g_logic_seen);
+}
+
+int g_story_logged = -1;
+void log_story(const player::State &s, LONG n) {
+    if (!s.has_logic || static_cast<int>(s.in_story) == g_story_logged) return;
+    g_story_logged = s.in_story;
+    log::write("player: %s (call %ld)", s.in_story ? "in a story area" : "out of the story area", static_cast<long>(n));
+}
+
 void log_player(const player::State &s, LONG n) {
     if (!s.has_health) {
         if (g_logged.has_health) log::write("player: not resolved (call %ld)", static_cast<long>(n));
@@ -152,6 +193,8 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         player::read(world, s);
         int64_t t1 = now_us();
         meter(kRead, t1 - t, n), t = t1;
+        log_logic(s, n);
+        log_story(s, n);
         motion::sample(s, n);
         t1 = now_us();
         meter(kMotion, t1 - t, n), t = t1;

@@ -264,6 +264,7 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
         std::snprintf(s, sizeof s, "zone: %s", g_shown.id);
     else
         std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
+    if (!stale && p.in_story) std::strncat(s, " [story]", sizeof s - std::strlen(s) - 1);
     line(pen, s);
     const long secs = static_cast<long>(g_zone_secs + g_away);
     std::snprintf(s, sizeof s, "ts: %02ld:%02ld%s", secs / 60, secs % 60, uistate::paused() ? " [paused]" : "");

@@ -25,7 +25,10 @@ struct State {
     // InGap and Status rows whole, 8 bytes each, as the log's hex; has_* false when the row did not resolve.
     bool has_gap = false, has_status = false;
     uint64_t gap = 0, status = 0;
-    bool in_gap = false;           // InGap's flag byte: the player is in the Gap
+    bool in_gap = false;     // InGap's flag byte: the player is in the Gap
+    bool has_logic = false;  // LogicData row 0, whole: the story-area probe
+    bool in_story = false;   // LogicData +0x42c == 2: the game's "Not While in Story Area"
+    uint8_t logic[2064] = {};
     float h = 0.0f, total = 0.0f;  // its length on the ground plane (x-z), and its whole length
     // Where each value was read, for the log and a Cheat Engine check: 0 = that row was not read.
     int64_t arch = -1;

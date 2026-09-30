@@ -31,7 +31,7 @@ struct Memo {
     uint64_t chunk = 0;
     int64_t arch = -1;
     uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent, state = kAbsent;
-    uint32_t gap = kAbsent, status = kAbsent;
+    uint32_t gap = kAbsent, status = kAbsent, logic = kAbsent;
 } g_memo;
 
 int g_resolutions;
@@ -87,6 +87,14 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
     const int t = ecs::type_index(a, game::kWorldTransform), m = ecs::type_index(a, game::kMovement);
     const int s = ecs::type_index(a, game::kMovementState);
     const int g = ecs::type_index(a, game::kInGap), st = ecs::type_index(a, game::kStatus);
+    const int ld = ecs::type_index(a, game::kLogicData);
+    if (ld >= 0) {  // the column's width: the next column's offset minus its own (rows times the row size)
+        uint32_t next = UINT32_MAX;
+        for (uint32_t i = 0; i < a.count; i++)
+            if (a.offsets[i] > a.offsets[ld] && a.offsets[i] < next) next = a.offsets[i];
+        log::write("player: LogicData column +%lx, width %ld", static_cast<unsigned long>(a.offsets[ld]),
+                   static_cast<long>(next == UINT32_MAX ? -1 : static_cast<long>(next - a.offsets[ld])));
+    }
     const Memo was = g_memo;
     g_memo = {world,
               chunk,
@@ -96,24 +104,27 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
               m < 0 ? kAbsent : a.offsets[m],
               s < 0 ? kAbsent : a.offsets[s],
               g < 0 ? kAbsent : a.offsets[g],
-              st < 0 ? kAbsent : a.offsets[st]};
+              st < 0 ? kAbsent : a.offsets[st],
+              ld < 0 ? kAbsent : a.offsets[ld]};
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
                        was.transform != g_memo.transform || was.movement != g_memo.movement ||
-                       was.state != g_memo.state || was.gap != g_memo.gap || was.status != g_memo.status;
+                       was.state != g_memo.state || was.gap != g_memo.gap || was.status != g_memo.status ||
+                       was.logic != g_memo.logic;
     if (moved && g_resolutions < kResolutionsLogged) {
         g_resolutions++;
-        char health[16], transform[16], movement[16], state[16], gap[16], status[16];
+        char health[16], transform[16], movement[16], state[16], gap[16], status[16], logic[16];
         offset_text(g_memo.health, health);
         offset_text(g_memo.transform, transform);
         offset_text(g_memo.movement, movement);
         offset_text(g_memo.state, state);
         offset_text(g_memo.gap, gap);
         offset_text(g_memo.status, status);
+        offset_text(g_memo.logic, logic);
         log::write(
             "player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s, MovementState %s, InGap "
-            "%s, Status %s%s",
+            "%s, Status %s, LogicData %s%s",
             static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state, gap, status,
-            g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
+            logic, g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
         // The full type list once per archetype new to this process, tags included: a diff of two lists names the
         // component a cutscene or a death adds (AKTH-0110).
         ecs::TypeList tags;
@@ -170,6 +181,11 @@ void read(void *world, State &out) {
     if (row_readable(chunk, g_memo.status, game::kStatusRowSize, run)) {
         out.status = at<uint64_t>(chunk + g_memo.status);
         out.has_status = true;
+    }
+    if (row_readable(chunk, g_memo.logic, game::kLogicDataProbe, run)) {
+        std::memcpy(out.logic, reinterpret_cast<const void *>(chunk + g_memo.logic), sizeof out.logic);
+        out.has_logic = true;
+        out.in_story = out.logic[game::kLogicStoryByte] == game::kLogicStoryBlocked;
     }
 
     if (row_readable(chunk, g_memo.transform, game::kWorldTransformRowSize, run)) {
