@@ -23,11 +23,12 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
     log::write("fp %08lx%08lx cache %s", static_cast<unsigned long>(fp >> 32),
                static_cast<unsigned long>(fp & 0xffffffffUL), cache::describe(st));
     if (st == cache::Status::Hit) {
-        // optional key
-        if (!o.sonar) {
-            o.sonar = solve::system(exe, game::kSonarName, "sonar");
-            if (o.sonar) cache::save(fp, o);
-        }
+        // optional keys
+        bool changed = false;
+        if (!o.sonar) changed |= (o.sonar = solve::system(exe, game::kSonarName, "sonar")) != 0;
+        if (!o.hudvis) changed |= (o.hudvis = solve::system(exe, game::kHudVisibilityName, "hudvis")) != 0;
+        if (!o.pausedet) changed |= (o.pausedet = solve::system(exe, game::kPauseDetectName, "pausedet")) != 0;
+        if (changed) cache::save(fp, o);
         return true;
     }
 
@@ -43,6 +44,8 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
     }
     o.runner = solve::runner(exe);
     o.sonar = solve::system(exe, game::kSonarName, "sonar");
+    o.hudvis = solve::system(exe, game::kHudVisibilityName, "hudvis");
+    o.pausedet = solve::system(exe, game::kPauseDetectName, "pausedet");
     if (!o.get_player || !o.runner) {
         log::write("not solved (getplayer=%lx runner=%lx) - nothing cached", static_cast<unsigned long>(o.get_player),
                    static_cast<unsigned long>(o.runner));

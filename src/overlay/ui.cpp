@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hooks/runner.h"
 #include "hooks/sonar.h"
+#include "hooks/uistate.h"
 #include "log.h"
 #include "memory.h"
 #include "names.h"
@@ -252,7 +253,7 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
         std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
     line(pen, s);
     const long secs = static_cast<long>(g_zone_secs + g_away);
-    std::snprintf(s, sizeof s, "ts: %02ld:%02ld", secs / 60, secs % 60);
+    std::snprintf(s, sizeof s, "ts: %02ld:%02ld%s", secs / 60, secs % 60, uistate::paused() ? " [paused]" : "");
     line(pen, s);
     if (stale || !p.has_position)
         std::snprintf(s, sizeof s, "loc: --");

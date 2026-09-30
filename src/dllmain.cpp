@@ -10,6 +10,7 @@
 #include "hooks/present.h"
 #include "hooks/runner.h"
 #include "hooks/sonar.h"
+#include "hooks/uistate.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
@@ -47,6 +48,9 @@ DWORD WINAPI boot_main(LPVOID) {
         // the walk on its own thread, off what the runner publishes; nothing runs on the runner's call for it
         if (!lifecycle::stopping && lifecycle::runner_hooked) enemies::start();
         if (!lifecycle::stopping && o.sonar) lifecycle::sonar_hooked = sonar::install(exe, o.sonar);
+        if (!lifecycle::stopping && o.hudvis) lifecycle::uistate_hooked = uistate::install(exe, o.hudvis);
+        if (!lifecycle::stopping && o.pausedet && uistate::install_pause(exe, o.pausedet))
+            lifecycle::uistate_hooked = true;
         // the probe after the runner, whose world it reads
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             lifecycle::damage_hooked = damage::install(exe);

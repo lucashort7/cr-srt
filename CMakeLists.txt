@@ -56,6 +56,7 @@ add_library(cr-srt SHARED
   src/hooks/damage.cpp
   src/hooks/present.cpp
   src/hooks/sonar.cpp
+  src/hooks/uistate.cpp
   src/overlay/swap.cpp
   src/overlay/renderer.cpp
   src/overlay/ui.cpp)

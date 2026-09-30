@@ -12,7 +12,8 @@ inline std::atomic<bool> stopping{false};
 inline std::atomic<bool> minhook_ready{false};
 inline std::atomic<bool> runner_hooked{false};
 inline std::atomic<bool> present_hooked{false};
-inline std::atomic<bool> damage_hooked{false};  // the probe, only with [probe] damage=1
-inline std::atomic<bool> sonar_hooked{false};   // the district; absent when its solve failed
+inline std::atomic<bool> damage_hooked{false};   // the probe, only with [probe] damage=1
+inline std::atomic<bool> sonar_hooked{false};    // the district; absent when its solve failed
+inline std::atomic<bool> uistate_hooked{false};  // the state probe; absent when its solve failed
 
 }  // namespace crsrt::lifecycle

@@ -164,6 +164,26 @@ inline constexpr uintptr_t kActiveStride = 0x10;
 inline constexpr uintptr_t kActiveDistrictHash = 0x8;
 inline constexpr uintptr_t kActiveOtherHash = 0xc;
 
+// --- The UI's state (AKTH-0110, hooks/uistate.h). heron::hud_visibility::system reads, in slots 0-8: its entity, one
+// query (the player's Status and LogicData), UIVisibility, UIStateStacks, FactDictionary, TimelineCinematicsControl, a
+// r::Ptr<GameState>, JRPGState, Options (its tray, 2026-09-30). Found by name like the runner.
+inline constexpr char kHudVisibilityName[] = "ecs::system::getName<void __cdecl heron::hud_visibility::system(";
+inline constexpr int kHudVisSlots = 9;
+inline constexpr uintptr_t kHudVisUIStateStacks = 3 * 8;
+// UIStateStacks+0x128, +0x130, +0x138: three qwords that read as bitsets of what the UI shows. The map sets bits 3,
+// 27-29 of +0x138, the inventory bits 33 and 61; the quest log and the pause menu set none of them, so they name a
+// screen's content and not the hub. The whole object freezes while a screen is open. Logged on change, a lead.
+inline constexpr uintptr_t kUIStacksBits = 0x128;
+// The game's own pause detection, for the audio: sndencore::pause_state_detection::system(AudioPause &,
+// FixedUpdateState &), slots 0 and 1, no entity slot first (its tray, 2026-09-30). AudioPause's byte +0 is 1 while
+// any hub screen (Tab, M, C, I, J, L) or the pause menu (Esc) is open, 0 in the world: 7 of 7. FixedUpdateState+0x18
+// reads 2 in a pause and 0 in the world, a frame earlier; unused.
+inline constexpr char kPauseDetectName[] =
+    "ecs::system::getName<void __cdecl sndencore::pause_state_detection::system(";
+inline constexpr int kPauseDetectSlots = 2;
+inline constexpr uintptr_t kPauseDetectAudioPause = 0;
+inline constexpr uintptr_t kAudioPauseFlag = 0;
+
 // A Health row in points: its fraction of max, rounded to the nearest point.
 inline int points(float fraction, int32_t max) {
     return static_cast<int>(std::lround(fraction * static_cast<float>(max)));
