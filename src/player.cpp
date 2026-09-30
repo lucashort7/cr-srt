@@ -36,6 +36,18 @@ struct Memo {
 
 int g_resolutions;
 bool g_pad_said;
+// The archetypes whose full type list the log already has: the player cycles through a handful, and each list is 12
+// synchronous writes on the game's thread (2-3 ms of runner max at every change on 2026-09-30).
+constexpr int kListsLogged = 32;
+int64_t g_listed[kListsLogged];
+int g_listed_count;
+
+bool listed(int64_t index) {
+    for (int i = 0; i < g_listed_count; i++)
+        if (g_listed[i] == index) return true;
+    if (g_listed_count < kListsLogged) g_listed[g_listed_count++] = index;
+    return false;
+}
 
 enum Resolved { kFailed, kKept, kFresh };
 
@@ -102,10 +114,10 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
             "%s, Status %s%s",
             static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state, gap, status,
             g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
-        // The full type list once per archetype the player passes through, tags included: a diff of two lists names
-        // the component a cutscene or a death adds (AKTH-0110).
+        // The full type list once per archetype new to this process, tags included: a diff of two lists names the
+        // component a cutscene or a death adds (AKTH-0110).
         ecs::TypeList tags;
-        if (was.arch != index && ecs::type_list(w, index, tags)) ecs::log_type_list(index, tags);
+        if (was.arch != index && !listed(index) && ecs::type_list(w, index, tags)) ecs::log_type_list(index, tags);
     }
     return kFresh;
 }
