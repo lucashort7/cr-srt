@@ -23,6 +23,8 @@ inline constexpr uintptr_t kDeviceGlobal = 0x5c371e8;       // *(exe+off) = the 
 //   hashes(arch) = *(u64*)(w + 8 + (arch + 0xc22) * 32 + 8), count at +0x1c of the same entry
 //   offs(arch)   = *(u64*)(w + 8 + arch * 32 + 0x18450), a u32 offset from the chunk per type index
 //   row          = chunk + offs[i], i = the type's index in hashes
+//   tags(arch)   = *(u64*)(w + 8 + (arch + 0xc22) * 32), count at +0x18: the full type list, the columns plus the
+//                  tags that carry no bytes (probe/snapshot.cpp reads it; the enemy note, 2026-09-28)
 inline constexpr int64_t kArchetypeMax = 0x4000;
 inline constexpr int64_t kChunkSlotBias = 10;
 inline constexpr int64_t kTypeEntryBias = 0xc22;
@@ -59,6 +61,15 @@ inline constexpr uint32_t kHealthComponent = 0xa471f608;  // contentgame::Health
 inline constexpr uint32_t kRegeneration = 0x8b9bc037;
 // Written by player_status::update_combat_status from the living NPCEnemy rows.
 inline constexpr uint32_t kCombatStatus = 0x17560154;
+// Read by 14 systems (fast travel, the quest tracker, fall_respawn) for the Gap state. Not a tag: an 8-byte column on
+// the player's archetype in the Gap and out of it (1546 both, 2026-09-30). Its byte +0 is the flag, 1 in the Gap and 0
+// in the world; the other 7 bytes did not move across a round trip (AKTH-0110).
+inline constexpr uint32_t kInGap = 0xaa799e1b;  // heron::gap::component::InGap
+inline constexpr uint32_t kInGapRowSize = 8;
+inline constexpr uint64_t kInGapFlag = 0xff;  // the mask of the flag byte in the row read as a u64
+// What hud_visibility::system reads off the player beside the envs, 8 bytes; meaning unread (AKTH-0110).
+inline constexpr uint32_t kStatus = 0x72d38548;  // heron::player_status::component::Status
+inline constexpr uint32_t kStatusRowSize = 8;
 // What an NPC's kind might be read from; the damage probe dumps them (names by tools/typenames.py, 2026-09-28).
 inline constexpr uint32_t kDebugName = 0x0bca075d;    // coregame::component::DebugName, 16 bytes
 inline constexpr uint32_t kNpcLevel = 0x712eb585;     // heron::leveling::component::NPCLevel, 8 bytes

@@ -241,7 +241,10 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     sonar::district(d);
     zone_clock(d, dt);
     char s[96];
-    if (!g_shown.has)
+    // The sonar names no district in the Gap; the player's own InGap flag does.
+    if (!g_shown.has && !stale && p.in_gap)
+        std::snprintf(s, sizeof s, "zone: THE_GAP");
+    else if (!g_shown.has)
         std::snprintf(s, sizeof s, "zone: --");
     else if (g_shown.level == 0)
         std::snprintf(s, sizeof s, "zone: %s", g_shown.id);

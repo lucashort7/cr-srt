@@ -26,6 +26,19 @@ bool archetype(const uint8_t *world, int64_t index, Archetype &out);
 // The type's index in the archetype, or -1.
 int type_index(const Archetype &archetype, uint32_t hash);
 
+// The archetype's full type list, the columns plus the tags that carry no bytes, checked readable. False when not.
+struct TypeList {
+    const uint32_t *hashes = nullptr;
+    uint32_t count = 0;
+};
+bool type_list(const uint8_t *world, int64_t index, TypeList &out);
+
+// True when the type is in the list: the test for a tag, which has no column.
+bool has_type(const TypeList &list, uint32_t hash);
+
+// Logs an archetype's full type list, several hashes to a line, for tools/typenames.py.
+void log_type_list(int64_t index, const TypeList &list);
+
 // Where a component row sits: its archetype, that archetype's chunk, the column's offset from the chunk, how many rows
 // the column holds (the next column's offset minus this one's, over the row size) and the row's index in it.
 struct RowPlace {

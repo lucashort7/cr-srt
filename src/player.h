@@ -21,7 +21,11 @@ struct State {
     float rotation[4] = {};  // WorldTransformReadOnly +0, a quaternion x y z w: the body's orientation
     float speed = 0.0f;      // Movement +0x20, metres a second, 0 through most of a jump
     bool has_velocity = false;
-    float velocity[3] = {};        // MovementState +0, metres a second, Y up
+    float velocity[3] = {};  // MovementState +0, metres a second, Y up
+    // InGap and Status rows whole, 8 bytes each, as the log's hex; has_* false when the row did not resolve.
+    bool has_gap = false, has_status = false;
+    uint64_t gap = 0, status = 0;
+    bool in_gap = false;           // InGap's flag byte: the player is in the Gap
     float h = 0.0f, total = 0.0f;  // its length on the ground plane (x-z), and its whole length
     // Where each value was read, for the log and a Cheat Engine check: 0 = that row was not read.
     int64_t arch = -1;

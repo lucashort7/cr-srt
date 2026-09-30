@@ -53,6 +53,7 @@ bool same(const player::State &a, const player::State &b) {
            a.fraction == b.fraction && a.max == b.max && a.position[0] == b.position[0] &&
            a.position[1] == b.position[1] && a.position[2] == b.position[2] && a.speed == b.speed &&
            a.velocity[0] == b.velocity[0] && a.velocity[1] == b.velocity[1] && a.velocity[2] == b.velocity[2] &&
+           a.has_gap == b.has_gap && a.gap == b.gap && a.has_status == b.has_status && a.status == b.status &&
            a.arch == b.arch && a.health_at == b.health_at && a.position_at == b.position_at &&
            a.speed_at == b.speed_at && a.velocity_at == b.velocity_at;
 }
@@ -69,6 +70,15 @@ void raw_text(const float *v, int n, bool shown, uint64_t address, char *out, si
 }
 
 // The raw readings the HUD draws and the address of each, for a check against Cheat Engine.
+// A row's 8 bytes as one hex number, "--" when the row was not read.
+void hex_text(uint64_t v, bool has, char *out) {
+    if (!has) {
+        lstrcpyA(out, "--");
+        return;
+    }
+    std::snprintf(out, 24, "%016llx", static_cast<unsigned long long>(v));
+}
+
 void log_player(const player::State &s, LONG n) {
     if (!s.has_health) {
         if (g_logged.has_health) log::write("player: not resolved (call %ld)", static_cast<long>(n));
@@ -82,8 +92,12 @@ void log_player(const player::State &s, LONG n) {
     raw_text(&s.speed, 1, s.has_speed, s.speed_at, speed, sizeof speed);
     raw_text(s.velocity, 3, s.has_velocity, s.velocity_at, velocity, sizeof velocity);
     motion::text(calc, sizeof calc);
-    log::write("player: arch %ld health %s of %ld, pos %s, speed %s, vel %s, %s (call %ld)", static_cast<long>(s.arch),
-               health, static_cast<long>(s.max), position, speed, velocity, calc, static_cast<long>(n));
+    char gap[24], status[24];
+    hex_text(s.gap, s.has_gap, gap);
+    hex_text(s.status, s.has_status, status);
+    log::write("player: arch %ld health %s of %ld, pos %s, speed %s, vel %s, %s, InGap %s, Status %s (call %ld)",
+               static_cast<long>(s.arch), health, static_cast<long>(s.max), position, speed, velocity, calc, gap,
+               status, static_cast<long>(n));
     g_logged = s;
 }
 

@@ -31,6 +31,7 @@ struct Memo {
     uint64_t chunk = 0;
     int64_t arch = -1;
     uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent, state = kAbsent;
+    uint32_t gap = kAbsent, status = kAbsent;
 } g_memo;
 
 int g_resolutions;
@@ -73,6 +74,7 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
     if (h < 0) return kFailed;
     const int t = ecs::type_index(a, game::kWorldTransform), m = ecs::type_index(a, game::kMovement);
     const int s = ecs::type_index(a, game::kMovementState);
+    const int g = ecs::type_index(a, game::kInGap), st = ecs::type_index(a, game::kStatus);
     const Memo was = g_memo;
     g_memo = {world,
               chunk,
@@ -80,20 +82,30 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
               a.offsets[h],
               t < 0 ? kAbsent : a.offsets[t],
               m < 0 ? kAbsent : a.offsets[m],
-              s < 0 ? kAbsent : a.offsets[s]};
+              s < 0 ? kAbsent : a.offsets[s],
+              g < 0 ? kAbsent : a.offsets[g],
+              st < 0 ? kAbsent : a.offsets[st]};
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
                        was.transform != g_memo.transform || was.movement != g_memo.movement ||
-                       was.state != g_memo.state;
+                       was.state != g_memo.state || was.gap != g_memo.gap || was.status != g_memo.status;
     if (moved && g_resolutions < kResolutionsLogged) {
         g_resolutions++;
-        char health[16], transform[16], movement[16], state[16];
+        char health[16], transform[16], movement[16], state[16], gap[16], status[16];
         offset_text(g_memo.health, health);
         offset_text(g_memo.transform, transform);
         offset_text(g_memo.movement, movement);
         offset_text(g_memo.state, state);
-        log::write("player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s, MovementState %s%s",
-                   static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state,
-                   g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
+        offset_text(g_memo.gap, gap);
+        offset_text(g_memo.status, status);
+        log::write(
+            "player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s, MovementState %s, InGap "
+            "%s, Status %s%s",
+            static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state, gap, status,
+            g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
+        // The full type list once per archetype the player passes through, tags included: a diff of two lists names
+        // the component a cutscene or a death adds (AKTH-0110).
+        ecs::TypeList tags;
+        if (was.arch != index && ecs::type_list(w, index, tags)) ecs::log_type_list(index, tags);
     }
     return kFresh;
 }
@@ -138,6 +150,15 @@ void read(void *world, State &out) {
     out.has_health = true;
     out.fraction = at<float>(chunk + g_memo.health);
     out.max = at<int32_t>(chunk + g_memo.health + 4);
+    if (row_readable(chunk, g_memo.gap, game::kInGapRowSize, run)) {
+        out.gap = at<uint64_t>(chunk + g_memo.gap);
+        out.has_gap = true;
+        out.in_gap = (out.gap & game::kInGapFlag) == 1;
+    }
+    if (row_readable(chunk, g_memo.status, game::kStatusRowSize, run)) {
+        out.status = at<uint64_t>(chunk + g_memo.status);
+        out.has_status = true;
+    }
 
     if (row_readable(chunk, g_memo.transform, game::kWorldTransformRowSize, run)) {
         const uint64_t row = chunk + g_memo.transform;

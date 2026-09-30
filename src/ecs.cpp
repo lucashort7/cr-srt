@@ -58,6 +58,34 @@ int type_index(const Archetype &archetype, uint32_t hash) {
     return -1;
 }
 
+bool type_list(const uint8_t *world, int64_t index, TypeList &out) {
+    const uint8_t *entry = world + 8 + (index + game::kTypeEntryBias) * 32;
+    if (!mem::readable(entry, 32)) return false;
+    const auto *hashes = *reinterpret_cast<const uint32_t *const *>(entry);
+    const uint32_t count = *reinterpret_cast<const uint32_t *>(entry + 0x18);
+    if (count > 4096 || !mem::readable(hashes, count * 4)) return false;
+    out = {hashes, count};
+    return true;
+}
+
+bool has_type(const TypeList &list, uint32_t hash) {
+    for (uint32_t i = 0; i < list.count; i++)
+        if (list.hashes[i] == hash) return true;
+    return false;
+}
+
+void log_type_list(int64_t index, const TypeList &list) {
+    char line[480];
+    int n = 0;
+    for (uint32_t i = 0; i < list.count; i++) {
+        n += wsprintfA(line + n, "%08lx ", static_cast<unsigned long>(list.hashes[i]));
+        if (n > 440 || i + 1 == list.count) {
+            log::write("arch %ld tags: %s", static_cast<long>(index), line);
+            n = 0;
+        }
+    }
+}
+
 bool locate_row(const uint8_t *world, uint64_t row, uint32_t hash, uint32_t stride, RowPlace &out) {
     // A chunk more than this far below the row cannot hold it: skips the archetype tables of every unrelated chunk.
     constexpr uint64_t kChunkSpan = 64ull << 20;
