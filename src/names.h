@@ -89,7 +89,10 @@ inline constexpr Kind kKinds[] = {
     {0xb5c87403f8aa4595ull, "flux_horizontal_saw", Source::Paired},
     {0xf54130012b8252e2ull, "miniboss_pursuer_overshield", Source::Paired},  // "WILHEM", 22756 hp lv9, Pattern waves
     {0xb5001270c3072968ull, "mini_blob", Source::Paired},
-    {0xee00b1418052d936ull, "juggernaut_geysers",
+    {0xee00b1418052d936ull,
+     "juggernaut_geysers",
+     {0x1a46c02ada381f6aull, "miniboss_plague", Source::Paired},  // "FERGUS", Mold, 50273 hp at level 7
+     {0x22798b9f13fb6a55ull, "spore_mines", Source::Paired},      // Mold, 3579 hp beside it
      Source::Paired},  // Mold, 800 hp beside the juggernaut  // 737 hp lv9, its own faction 9417cf1c with
                        // 35a0c348427de187
     // The player's companions, by the names the game's menus give them.

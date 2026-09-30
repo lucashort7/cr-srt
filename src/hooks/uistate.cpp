@@ -79,7 +79,13 @@ void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
     w.ever = true;
 }
 
-EnvWatch g_jrpg = {"JRPGState", game::kHudVisJRPGState, false, {}, false};
+// The hud_visibility envs watched for the world kind (AKTH-0110): the tower interior with no map is the probe.
+EnvWatch g_hud_watch[] = {
+    {"UIVisibility", 2 * 8, false, {}, false},
+    {"TimelineCinematicsControl", 5 * 8, false, {}, false},
+    {"GameState", 6 * 8, false, {}, false},  // an r::Ptr: a handle, not a pointer (following it read nothing)
+    {"JRPGState", game::kHudVisJRPGState, false, {}, false},
+};
 EnvWatch g_challenge_watch[] = {
     {"ChallengeModeInfo", 2 * 8, false, {}, false},
     {"ChallengeModeHudState", 3 * 8, false, {}, false},
@@ -129,7 +135,8 @@ void hk_hud(void *a, void *b, void *c, void *d) {
         if (n % kEvery == 1) {
             bits(c, n);
             const uint8_t *tray = nullptr;
-            if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray)) watch(g_jrpg, tray, n);
+            if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray))
+                for (EnvWatch &w : g_hud_watch) watch(w, tray, n);
         }
     }
     g_original_hud(a, b, c, d);
