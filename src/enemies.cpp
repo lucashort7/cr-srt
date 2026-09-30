@@ -69,15 +69,15 @@ uint8_t g_attachment[kMaxCapacity * game::kAttachmentRowSize];
 Enemy g_found[kMaxFound];
 uint8_t g_link[kMaxCapacity * 32];
 
-// A placed row with Health and no SpawnedNPC, for the log only: what the panel does not list (the player, a quest
-// NPC such as the Firebreaker escort, a linked health bar).
+// A placed row with Health and a faction and no SpawnedNPC, for the log only: what the panel does not list (the player,
+// a quest NPC such as the Firebreaker escort, a linked health bar).
 struct Linked {
     uint64_t handle;
     int64_t arch;
     float fraction;
     int32_t max;
     float position[3];
-    uint32_t faction;  // 0 when the row has none
+    uint32_t faction;
     uint32_t link_size;
     uint8_t link[16];
 };
@@ -279,9 +279,10 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
         width = std::min<uint32_t>(next == UINT32_MAX ? 16 : (next - column) / capacity, 32);
         if (!width || !copy_column(chunk, c.link, capacity, width, g_link)) return;
     }
-    if (!copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform)) return;
-    const bool has_faction =
-        c.faction >= 0 && copy_column(chunk, c.faction, capacity, game::kFactionRowSize, g_faction);
+    // Rows without a faction are the destructible props (50/50, 9999/9999 by the hundred) and would fill the sample.
+    if (c.faction < 0 || !copy_column(chunk, c.faction, capacity, game::kFactionRowSize, g_faction) ||
+        !copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform))
+        return;
     for (uint32_t r = 0; r < capacity && g_linked_n < kMaxLinked; r++) {
         const uint8_t *health = g_health + r * game::kHealthRowSize;
         const auto fraction = at<float>(health);
@@ -299,7 +300,7 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
         l.max = max;
         std::memcpy(l.position, g_transform + r * game::kWorldTransformRowSize + game::kWorldPosition,
                     sizeof l.position);
-        if (has_faction) l.faction = at<uint32_t>(g_faction + r * game::kFactionRowSize);
+        l.faction = at<uint32_t>(g_faction + r * game::kFactionRowSize);
         l.link_size = width;
         if (width) std::memcpy(l.link, g_link + r * width, width < sizeof l.link ? width : sizeof l.link);
     }
@@ -450,7 +451,8 @@ float distance_to_player(const float p[3]) {
 }
 
 void log_linked(long calls) {
-    log::write("linked: %d placed rows with Health and no SpawnedNPC (call %ld), nearest first:", g_linked_n, calls);
+    log::write("linked: %d placed rows with Health and a faction, no SpawnedNPC (call %ld), nearest first:", g_linked_n,
+               calls);
     std::sort(g_linked, g_linked + g_linked_n, [](const Linked &a, const Linked &b) {
         return distance_to_player(a.position) < distance_to_player(b.position);
     });
