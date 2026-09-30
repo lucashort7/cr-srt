@@ -27,8 +27,33 @@ namespace {
 // Draws with no runner call in between before the health reads as stale: ~0.5 s at 60 fps.
 constexpr long kStaleDraws = 30;
 constexpr long kIniEvery = 60;  // draws between two reads of [enemies] in the ini, ~1 s
+// Seconds with no runner call before the zone's clock stops: the game is paused. A pause costs the clock at most this.
+constexpr float kClockGrace = 0.1f;
+// Seconds a new zone must hold before the clock takes it. Inside one district the game's active list empties for a few
+// looks (one every ~0.5 s): the log of 2026-09-29 has 16 gaps with the same district on both sides, logged to the
+// whole second as 1, 1, 2, 4, 6 s and up, so the shortest three last at most 3 s.
+constexpr double kZoneSettle = 3.5;
+
+// The panel as Lucas drew it over a 1920x1080 screenshot (story AKTH-0109). Every size is in pixels at a height of 1080
+// and scales with the text, which has one size: the SRT's 11 px at 1080, following the height, never under 11.
+constexpr float kPanelPx = 11.0f;
+constexpr float kAnchorX = 21.0f / 1920.0f, kAnchorY = 123.0f / 1080.0f;  // the box's top left, of the screen
+constexpr float kBoxW = 208.0f;  // the least width: a wider line widens the box
+constexpr float kPadX = 12.0f, kPadY = 6.0f;
+constexpr float kLine = 14.0f;                                             // one line of text
+constexpr float kDividerGap = 2.0f, kHeaderGap = 2.0f, kBoxBottom = 2.0f;  // under a section, the header, the last row
+constexpr float kBarW = 97.0f, kBarH = 9.0f, kShieldH = 3.0f, kShieldGap = 1.0f, kNumberGap = 6.0f, kRowGap = 6.0f;
+constexpr ImU32 kBoxFill = IM_COL32(0, 0, 0, 128);       // black at 50 %
+constexpr ImU32 kBoxLine = IM_COL32(255, 255, 255, 64);  // white at 25 %: the border and the two dividers
+constexpr ImU32 kText = IM_COL32(255, 255, 255, 235);
+constexpr ImU32 kHealthLeft = IM_COL32(0x37, 0xCB, 0x3D, 230);     // the SRT's green
+constexpr ImU32 kHealthMissing = IM_COL32(0x34, 0x31, 0xBF, 230);  // the SRT's blue, under every health bar
+constexpr ImU32 kAllyLeft = IM_COL32(28, 255, 255, 230);           // the cyan the game draws over its own allies
+constexpr ImU32 kShieldLeft = IM_COL32(240, 240, 240, 230);
+constexpr ImU32 kShieldTrack = IM_COL32(0, 0, 0, 150);
 
 long g_seen_calls, g_still;  // the runner's count at the last draw, and draws since it last moved
+float g_quiet;               // seconds since it last moved, up to 1
 bool g_stale_said;
 
 // [enemies] radius=30 rows=8: the panel shows the enemies within `radius` metres, at most `rows` of them.
@@ -37,7 +62,15 @@ long g_ini_at = -kIniEvery;
 
 enemies::List g_list;  // the render thread's copy, one per draw
 
-// White on a drop shadow.
+// The zone's clock. g_zone is the zone it runs in, the sonar's id or "" outside every district, and g_shown that zone
+// as the sonar last read it, for the zone line. g_away is the running time since the sonar last read g_zone, which no
+// zone owns until one is taken. g_next is a district the sonar reads that has not held kZoneSettle yet, g_next_held how
+// long it has, and g_empty the running time of the current stretch with no district.
+char g_zone[32], g_next[32];
+double g_zone_secs, g_away, g_next_held, g_empty;
+sonar::District g_shown, g_next_shown;
+
+// White on a drop shadow, for what the overlay draws outside the panel.
 void text_at(ImVec2 at, float px, const char *text, ImU32 color = IM_COL32(255, 255, 255, 235)) {
     ImFont *font = ImGui::GetFont();
     ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -53,12 +86,14 @@ void injected_line(float w, float h, float px) {
 }
 
 // True when the runner has not been called for kStaleDraws draws: everything it published is held over.
-bool runner_stale(long calls, long frame) {
+bool runner_stale(long calls, long frame, float dt) {
     if (calls != g_seen_calls) {
         g_seen_calls = calls;
         g_still = 0;
-    } else if (g_still < kStaleDraws) {
-        g_still++;
+        g_quiet = 0.0f;
+    } else {
+        if (g_still < kStaleDraws) g_still++;
+        if (g_quiet < 1.0f) g_quiet += dt;
     }
     bool stale = g_still >= kStaleDraws;
     if (stale != g_stale_said) {
@@ -71,58 +106,6 @@ bool runner_stale(long calls, long frame) {
 
 // A value that rounds to zero at one decimal, as 0: "-0.0" reads as a direction that is not there.
 float tenth(float v) { return std::fabs(v) < 0.05f ? 0.0f : v; }
-
-// The stats block on the left, one row per number: health, position, the game's speed, its velocity vector. "--" when
-// the runner cannot resolve the row or has stopped being called: a held-over value would read as live. Returns the y
-// below the block.
-float stats(ImVec2 at, float px, const player::State &p, bool stale) {
-    const float step = std::floor(px * 1.25f);
-    char text[96];
-    // Written as a negation so a NaN fraction is refused too; the DeMorgan form would let it through.
-    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
-    if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0)
-        std::snprintf(text, sizeof text, "health  --");
-    else
-        std::snprintf(text, sizeof text, "health  %d / %d  (%.1f%%)", game::points(p.fraction, p.max),
-                      static_cast<int>(p.max), p.fraction * 100.0f);
-    text_at(at, px, text);
-    if (stale || !p.has_position)
-        std::snprintf(text, sizeof text, "pos  --");
-    else
-        std::snprintf(text, sizeof text, "pos  x %.1f  y %.1f  z %.1f", tenth(p.position[0]), tenth(p.position[1]),
-                      tenth(p.position[2]));
-    text_at(ImVec2(at.x, at.y + step), px, text);
-    if (stale || !p.has_speed)
-        std::snprintf(text, sizeof text, "speed  --");
-    else
-        std::snprintf(text, sizeof text, "speed  %.1f m/s", p.speed);
-    text_at(ImVec2(at.x, at.y + 2.0f * step), px, text);
-    if (stale || !p.has_velocity)
-        std::snprintf(text, sizeof text, "vel  --");
-    else
-        std::snprintf(text, sizeof text, "vel  h %.1f  v %.1f  total %.1f", tenth(p.h), tenth(p.velocity[1]),
-                      tenth(p.total));
-    text_at(ImVec2(at.x, at.y + 3.0f * step), px, text);
-    return at.y + 3.0f * step + std::floor(px * 1.8f);
-}
-
-// Under the stats block: the district the sonar last resolved, as the map names its level and bar. It is held while the
-// game is paused, where it cannot change, so the map can be read against it. Returns the y below it.
-float zone(ImVec2 at, float px) {
-    sonar::District d;
-    sonar::district(d);
-    char text[96];
-    if (!d.has)
-        std::snprintf(text, sizeof text, "zone  --");
-    else if (d.level == 0)
-        std::snprintf(text, sizeof text, "zone  %s", d.id);
-    else if (d.cost == 0)
-        std::snprintf(text, sizeof text, "zone  %s \xC2\xB7 lvl %d (max)", d.id, d.level);
-    else
-        std::snprintf(text, sizeof text, "zone  %s \xC2\xB7 lvl %d (%d/%d)", d.id, d.level, d.xp, d.cost);
-    text_at(at, px, text);
-    return at.y + std::floor(px * 1.8f);
-}
 
 void read_ini(long frame) {
     if (frame - g_ini_at < kIniEvery) return;
@@ -161,70 +144,232 @@ void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
 
 bool shown(const enemies::Enemy &e) { return e.distance < 0.0f || e.distance <= static_cast<float>(g_radius); }
 
-// A bar `fraction` full on a dark track.
-void bar(ImVec2 at, float width, float height, float fraction, ImU32 fill) {
-    ImDrawList *dl = ImGui::GetForegroundDrawList();
+// The size of the labels at the enemies' feet.
+float number_px(float px) { return std::floor(px * 0.65f); }
+
+// The panel's one text size.
+float panel_px(float height) { return std::max(kPanelPx, std::floor(height / 1080.0f * kPanelPx)); }
+
+// Where the panel's next line goes. `right` is the furthest x any line reached, so the box is sized after its text.
+struct Pen {
+    ImDrawList *dl = nullptr;
+    float px = 0.0f, s = 1.0f;  // the text size, and the scale from 1080
+    float x = 0.0f, y = 0.0f;   // the left of the text, the top of the next line
+    float right = 0.0f;
+    float dividers[2] = {};
+    int ndividers = 0;
+};
+
+// A size at 1080, at this height.
+float scaled(const Pen &pen, float v) { return std::floor(v * pen.s); }
+
+// Text at x, y, flat: the box behind it is what keeps it readable.
+void text(Pen &pen, float x, float y, const char *s) {
+    pen.dl->AddText(ImGui::GetFont(), pen.px, ImVec2(x, y), kText, s);
+    pen.right = std::max(pen.right, x + ImGui::GetFont()->CalcTextSizeA(pen.px, FLT_MAX, 0.0f, s).x);
+}
+
+void line(Pen &pen, const char *s) {
+    text(pen, pen.x, pen.y, s);
+    pen.y += scaled(pen, kLine);
+}
+
+// The end of a section: a divider under its last line, drawn with the box once the box's width is known.
+void divide(Pen &pen) {
+    const float y = pen.y + scaled(pen, kDividerGap);
+    if (pen.ndividers < 2) pen.dividers[pen.ndividers++] = y;
+    pen.y = y + scaled(pen, kPadY);
+}
+
+// A bar `fraction` full on its track.
+void bar(ImDrawList *dl, ImVec2 at, float width, float height, float fraction, ImU32 fill, ImU32 track) {
     if (!(fraction >= 0.0f)) fraction = 0.0f;
     fraction = std::min(fraction, 1.0f);
-    dl->AddRectFilled(at, ImVec2(at.x + width, at.y + height), IM_COL32(0, 0, 0, 150));
+    dl->AddRectFilled(at, ImVec2(at.x + width, at.y + height), track);
     if (fraction > 0.0f) dl->AddRectFilled(at, ImVec2(at.x + std::floor(width * fraction), at.y + height), fill);
 }
 
-// The panel's text sizes, smaller than the stats' so more rows fit: its lines, and the numbers beside each bar.
-float panel_px(float px) { return std::floor(px * 0.75f); }
-float number_px(float px) { return std::floor(px * 0.65f); }
+// The clock starts over in `key` with every second since it last read the old zone, or, when `key` is that zone, keeps
+// them: the time away was a flicker.
+void take(const char *key, const sonar::District &shown) {
+    if (std::strncmp(key, g_zone, sizeof g_zone) == 0) {
+        g_zone_secs += g_away;
+    } else {
+        std::snprintf(g_zone, sizeof g_zone, "%s", key);
+        g_zone_secs = g_away;
+    }
+    g_shown = shown;
+    g_next[0] = '\0';
+    g_away = g_next_held = g_empty = 0.0;
+}
 
-// Under the stats block, the SRT shape: the count loaded and the count within the radius, then per enemy within it,
-// nearest first, a line of what the walk read (faction, kind, level, distance) over its health bar, its shield as a
-// thin white bar on top when it has one standing.
-void enemy_panel(ImVec2 at, float stats_px, bool stale, long frame) {
+// Seconds in the zone the sonar last resolved: from zero at every change of zone, a return included, and still while
+// the game is paused. Outside every district is a zone of its own. A district is taken once it has held kZoneSettle, a
+// stretch with no district once it has lasted that long, and a shorter stretch counts for the district around it.
+void zone_clock(const sonar::District &d, float dt) {
+    const double run = g_quiet <= kClockGrace ? dt : 0.0;
+    const char *key = d.has ? d.id : "";
+    const bool gap = key[0] == '\0' && g_next[0] != '\0';  // no district while one is held pending
+    if (!gap && std::strncmp(key, g_zone, sizeof g_zone) == 0) {
+        g_zone_secs += g_away + run;
+        g_shown = d;
+        g_next[0] = '\0';
+        g_away = g_next_held = g_empty = 0.0;
+        return;
+    }
+    g_away += run;
+    if (key[0] == '\0') {
+        g_empty += run;
+        g_next_held += run;
+        if (g_empty >= kZoneSettle) take("", d);
+        return;
+    }
+    g_empty = 0.0;
+    if (std::strncmp(key, g_next, sizeof g_next) != 0) {
+        std::snprintf(g_next, sizeof g_next, "%s", key);
+        g_next_held = 0.0;
+    }
+    g_next_held += run;
+    g_next_shown = d;
+    if (g_next_held >= kZoneSettle) take(key, g_next_shown);
+}
+
+// The zone the clock runs in, its clock and where the player stands: the zone line and the clock change together. The
+// zone is held while the game is paused, where it cannot change, so the map can be read against it.
+void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
+    sonar::District d;
+    sonar::district(d);
+    zone_clock(d, dt);
+    char s[96];
+    if (!g_shown.has)
+        std::snprintf(s, sizeof s, "zone: --");
+    else if (g_shown.level == 0)
+        std::snprintf(s, sizeof s, "zone: %s", g_shown.id);
+    else
+        std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
+    line(pen, s);
+    const long secs = static_cast<long>(g_zone_secs + g_away);
+    std::snprintf(s, sizeof s, "ts: %02ld:%02ld", secs / 60, secs % 60);
+    line(pen, s);
+    if (stale || !p.has_position)
+        std::snprintf(s, sizeof s, "loc: --");
+    else
+        std::snprintf(s, sizeof s, "loc: (%.1f, %.1f, %.1f)", tenth(p.position[0]), tenth(p.position[1]),
+                      tenth(p.position[2]));
+    line(pen, s);
+}
+
+// The player: Health and Power, the game's Main Stats, each with its upgrade levels at the end, then Build Power and
+// Aberrant Strength, Source and Talent Points, and the movement. "--" for a value not read yet, or not read now: a
+// held-over value would read as live.
+void player_section(Pen &pen, const player::State &p, bool stale) {
+    char s[96];
+    // Written as a negation so a NaN fraction is refused too; the DeMorgan form would let it through.
+    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
+    if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0) {
+        std::snprintf(s, sizeof s, "hp: -- / -- [--%%] (--/--)");
+    } else {
+        const int hp = game::points(p.fraction, p.max);
+        std::snprintf(s, sizeof s, "hp: %d / %d [%d%%] (--/--)", hp, static_cast<int>(p.max),
+                      static_cast<int>(static_cast<long long>(hp) * 100 / p.max));
+    }
+    line(pen, s);
+    line(pen, "pw: -- / -- [--%] (--/--)");
+    line(pen, "bp: --   as: --");
+    line(pen, "src: --   tp: --");
+    if (stale || !p.has_speed)
+        std::snprintf(s, sizeof s, "ms: --");
+    else
+        std::snprintf(s, sizeof s, "ms: %.1f m/s", p.speed);
+    line(pen, s);
+    if (stale || !p.has_velocity)
+        std::snprintf(s, sizeof s, "ground: --   air: --");
+    else
+        std::snprintf(s, sizeof s, "ground: %.1f   air: %.1f", tenth(p.h), tenth(p.velocity[1]));
+    line(pen, s);
+}
+
+// One enemy: what the walk read (faction, kind, level, distance) over its health bar, the shield a thin white bar above
+// it when one stands, and the points and the percent beside it.
+void enemy_row(Pen &pen, const enemies::Enemy &e) {
+    char faction[16], kind[40], s[96];
+    faction_label(e.faction, faction, sizeof faction);
+    kind_label(e.kind, false, kind, sizeof kind);
+    if (e.distance < 0.0f)
+        std::snprintf(s, sizeof s, "%s %s lv%d", faction, kind, static_cast<int>(e.level));
+    else
+        std::snprintf(s, sizeof s, "%s %s lv%d %.0fm", faction, kind, static_cast<int>(e.level), e.distance);
+    line(pen, s);
+
+    const float bar_w = scaled(pen, kBarW), bar_h = scaled(pen, kBarH),
+                shield_h = std::max(1.0f, scaled(pen, kShieldH));
+    const bool shielded = e.shield_max > 0 && e.shield_fraction > 0.0f;
+    if (shielded) bar(pen.dl, ImVec2(pen.x, pen.y), bar_w, shield_h, e.shield_fraction, kShieldLeft, kShieldTrack);
+    const float bar_y = pen.y + shield_h + scaled(pen, kShieldGap);
+    bar(pen.dl, ImVec2(pen.x, bar_y), bar_w, bar_h, e.fraction, names::is_ally(e.faction) ? kAllyLeft : kHealthLeft,
+        kHealthMissing);
+    const int hp = game::points(e.fraction, e.max);
+    // Tenths of a percent, cut rather than rounded: a scratched enemy reads 99.9 %, never 100.0 %.
+    const long long tenths = e.max > 0 ? static_cast<long long>(hp) * 1000 / e.max : 0;
+    std::snprintf(s, sizeof s, "%d/%d %.1f%%", hp, static_cast<int>(e.max), static_cast<double>(tenths) / 10.0);
+    text(pen, pen.x + bar_w + scaled(pen, kNumberGap), std::floor(bar_y + (bar_h - pen.px) * 0.5f), s);
+    pen.y = bar_y + bar_h + scaled(pen, kRowGap);
+}
+
+// The count within the radius of the count loaded, the SRT's "12 of 16", then per enemy within it, nearest first, one
+// row, at most `rows` of them.
+void enemy_section(Pen &pen, bool stale, long frame) {
     read_ini(frame);
-    const float px = panel_px(stats_px);
-    char text[96];
     if (stale) {
-        text_at(at, px, "enemies  --");
+        line(pen, "enemies: --");
         return;
     }
     enemies::read(g_list);
     int within = 0;
     for (int i = 0; i < g_list.count; i++)
         if (shown(g_list.rows[i])) within++;
-    std::snprintf(text, sizeof text, "enemies  %d   shown %d", g_list.total, within);
-    text_at(at, px, text);
-
-    const float bar_w = std::floor(px * 8.0f), bar_h = std::floor(px * 0.45f), shield_h = std::floor(px * 0.3f);
-    float y = at.y + std::floor(px * 1.5f);
+    char s[48];
+    std::snprintf(s, sizeof s, "enemies: %d of %d", within, g_list.total);
+    line(pen, s);
+    pen.y += scaled(pen, kHeaderGap);
     int drawn = 0;
     for (int i = 0; i < g_list.count && drawn < g_rows; i++) {
-        const enemies::Enemy &e = g_list.rows[i];
-        if (!shown(e)) continue;
-        char faction[16], kind[40];
-        faction_label(e.faction, faction, sizeof faction);
-        kind_label(e.kind, false, kind, sizeof kind);
-        if (e.distance < 0.0f)
-            std::snprintf(text, sizeof text, "%s %s  lv%d", faction, kind, static_cast<int>(e.level));
-        else
-            std::snprintf(text, sizeof text, "%s %s  lv%d  %.0fm", faction, kind, static_cast<int>(e.level),
-                          e.distance);
-        text_at(ImVec2(at.x, y), px, text);
-        y += px + std::floor(px * 0.2f);  // clear of the text, so the shield does not read as an underline
-        const bool shielded = e.shield_max > 0 && e.shield_fraction > 0.0f;
-        if (shielded) bar(ImVec2(at.x, y), bar_w, shield_h, e.shield_fraction, IM_COL32(240, 240, 240, 230));
-        const float bar_y = y + shield_h + 1.0f;
-        // An ally keeps its place in the list and takes the cyan the game draws over its own allies.
-        const ImU32 fill = names::is_ally(e.faction) ? IM_COL32(28, 255, 255, 230) : IM_COL32(210, 50, 40, 230);
-        bar(ImVec2(at.x, bar_y), bar_w, bar_h, e.fraction, fill);
-        const int hp = game::points(e.fraction, e.max);
-        if (shielded)
-            std::snprintf(text, sizeof text, "%d / %d  +%d", hp, static_cast<int>(e.max),
-                          game::points(e.shield_fraction, e.shield_max));
-        else
-            std::snprintf(text, sizeof text, "%d / %d", hp, static_cast<int>(e.max));
-        const float npx = number_px(stats_px);
-        text_at(ImVec2(at.x + bar_w + std::floor(px * 0.4f), std::floor(bar_y + (bar_h - npx) * 0.5f)), npx, text);
-        y = bar_y + bar_h + std::floor(px * 0.5f);
+        if (!shown(g_list.rows[i])) continue;
+        enemy_row(pen, g_list.rows[i]);
         drawn++;
     }
+}
+
+// The panel: the zone, the player and the enemies in one box at the drawing's place. The text goes on the draw list's
+// second channel as it is laid out, and the box on the first once its size is known, so the box sits behind the text.
+void panel(float w, float h, const player::State &p, bool stale, long frame, float dt) {
+    Pen pen;
+    pen.dl = ImGui::GetForegroundDrawList();
+    pen.px = panel_px(h);
+    pen.s = pen.px / kPanelPx;
+    const ImVec2 box(std::floor(w * kAnchorX), std::floor(h * kAnchorY));
+    pen.x = box.x + scaled(pen, kPadX);
+    pen.y = box.y + scaled(pen, kPadY);
+    pen.right = pen.x;
+
+    pen.dl->ChannelsSplit(2);
+    pen.dl->ChannelsSetCurrent(1);
+    zone_section(pen, p, stale, dt);
+    divide(pen);
+    player_section(pen, p, stale);
+    divide(pen);
+    enemy_section(pen, stale, frame);
+
+    pen.dl->ChannelsSetCurrent(0);
+    const ImVec2 end(std::max(box.x + scaled(pen, kBoxW), pen.right + scaled(pen, kPadX)),
+                     pen.y + scaled(pen, kBoxBottom));
+    pen.dl->AddRectFilled(box, end, kBoxFill);
+    pen.dl->AddRect(box, end, kBoxLine);
+    // One pixel row between the border's two columns: a divider that reached them would light the joins twice.
+    for (int i = 0; i < pen.ndividers; i++)
+        pen.dl->AddRectFilled(ImVec2(box.x + 1.0f, pen.dividers[i]), ImVec2(end.x - 1.0f, pen.dividers[i] + 1.0f),
+                              kBoxLine);
+    pen.dl->ChannelsMerge();
 }
 
 // The camera's view-projection matrix, or false. It is 16 doubles, read twice until both reads agree (a torn copy is
@@ -304,16 +449,16 @@ void draw(float width, float height, float px, long frame) {
     static const char glyphs[] =
         " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
         "abcdefghijklmnopqrstuvwxyz{|}~\xC2\xB7";
-    for (float size : {px, panel_px(px), number_px(px)}) ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, glyphs);
+    for (float size : {px, number_px(px), panel_px(height)})
+        ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, glyphs);
     injected_line(width, height, px);
 
     player::State p;
     long calls = 0;
     runner::player_state(p, &calls);
-    const bool stale = runner_stale(calls, frame);
-    const ImVec2 at(std::floor(width * 0.02f), std::floor(height * 0.30f));  // left edge, room below for the panel
-    const float below = zone(ImVec2(at.x, stats(at, px, p, stale) - std::floor(px * 0.55f)), px);
-    enemy_panel(ImVec2(at.x, below), px, stale, frame);
+    const float dt = ImGui::GetIO().DeltaTime;
+    const bool stale = runner_stale(calls, frame, dt);
+    panel(width, height, p, stale, frame, dt);
     labels(width, height, px, p, stale);
 }
 

@@ -4,7 +4,8 @@
 
 namespace crsrt::ui {
 
-// The text size for a back buffer this tall: 26 px at 1440, never under 16.
+// The size of the text outside the panel, the debug lines, for a back buffer this tall: 26 px at 1440, never under 16.
+// The panel sizes its own text off the same height.
 float font_px(float height);
 
 // One frame's contents, between ImGui::NewFrame and ImGui::Render. `frame` is the overlay's frame count, for the log.
