@@ -88,13 +88,11 @@ inline constexpr Kind kKinds[] = {
     {0x22a6ec1be4b02ed0ull, "drifter_charge", Source::Paired},
     {0xb5c87403f8aa4595ull, "flux_horizontal_saw", Source::Paired},
     {0xf54130012b8252e2ull, "miniboss_pursuer_overshield", Source::Paired},  // "WILHEM", 22756 hp lv9, Pattern waves
+    // 737 hp at level 9, its own faction 9417cf1c shared with 35a0c348427de187
     {0xb5001270c3072968ull, "mini_blob", Source::Paired},
-    {0xee00b1418052d936ull,
-     "juggernaut_geysers",
-     {0x1a46c02ada381f6aull, "miniboss_plague", Source::Paired},  // "FERGUS", Mold, 50273 hp at level 7
-     {0x22798b9f13fb6a55ull, "spore_mines", Source::Paired},      // Mold, 3579 hp beside it
-     Source::Paired},  // Mold, 800 hp beside the juggernaut  // 737 hp lv9, its own faction 9417cf1c with
-                       // 35a0c348427de187
+    {0xee00b1418052d936ull, "juggernaut_geysers", Source::Paired},  // Mold, 800 hp beside the juggernaut
+    {0x1a46c02ada381f6aull, "miniboss_plague", Source::Paired},     // "FERGUS", Mold, 50273 hp at level 7
+    {0x22798b9f13fb6a55ull, "spore_mines", Source::Paired},         // Mold, 3579 hp beside it
     // The player's companions, by the names the game's menus give them.
     {0xdc8de3fce9d33935ull, "mold_ally", Source::Seen},
     {0xa418d99ab84ff184ull, "astral_spike", Source::Seen},
