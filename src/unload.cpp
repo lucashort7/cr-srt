@@ -81,6 +81,7 @@ DWORD WINAPI unloader(LPVOID) {
         }
     }
     log::write("unload: detaching pid=%lu", GetCurrentProcessId());
+    log::shutdown();  // the writer thread must be gone before the code it runs is unmapped
     FreeLibraryAndExitThread(g_self, 0);
 }
 
