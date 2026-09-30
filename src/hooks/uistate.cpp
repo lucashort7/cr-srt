@@ -79,55 +79,6 @@ void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
     w.ever = true;
 }
 
-// FactDictionary (hud_visibility slot 4): 256 bytes of the env and of what each of its first 8 qwords points at, logged
-// when they change, to find the entry that flips on a story area's edge (cr-fact-find-the-story-mode-entry).
-constexpr int kFactBytes = 256;
-struct FactDump {
-    uint8_t seen[kFactBytes];
-    bool ever;
-};
-FactDump g_fact_env, g_fact_ptr[8];
-
-bool dump_changed(FactDump &d, const uint8_t *at, const char *who, LONG n) {
-    uint8_t now[kFactBytes];
-    if (!mem::copy(at, now, sizeof now) || (d.ever && std::memcmp(now, d.seen, sizeof now) == 0)) return false;
-    log::write("fact: %s at %p changed (call %ld)", who, at, static_cast<long>(n));
-    for (int row = 0; row < kFactBytes / 64; row++) {
-        char text[8 * 17 + 8];
-        for (int i = 0; i < 8; i++) {
-            uint64_t v = 0;
-            std::memcpy(&v, now + row * 64 + i * 8, 8);
-            hex64(v, text + i * 17);
-            text[i * 17 + 16] = ' ';
-        }
-        text[8 * 17] = 0;
-        log::write("fact:   +%03x %s", row * 64, text);
-    }
-    std::memcpy(d.seen, now, sizeof now);
-    d.ever = true;
-    return true;
-}
-
-void fact_dump(const uint8_t *tray, LONG n) {
-    const uint8_t *env = nullptr;
-    if (!mem::copy(tray + 4 * 8, &env, sizeof env) || !env) return;
-    // The slot reads 0x...2B3: an odd address, so the low 3 bits are a tag and the object sits at the masked one.
-    const auto raw = reinterpret_cast<uintptr_t>(env);
-    env = reinterpret_cast<const uint8_t *>(raw & ~uintptr_t{7});
-    if (!g_fact_env.ever)
-        log::write("fact: slot 4 raw %p tag %d, object at %p", reinterpret_cast<void *>(raw), static_cast<int>(raw & 7),
-                   env);
-    dump_changed(g_fact_env, env, "FactDictionary", n);
-    for (int i = 0; i < 8; i++) {
-        uint64_t v = 0;
-        std::memcpy(&v, g_fact_env.seen + i * 8, 8);
-        if (v < 0x10000 || v > 0x7fffffffffffull) continue;
-        char who[16];
-        std::snprintf(who, sizeof who, "ptr +%02x", i * 8);
-        dump_changed(g_fact_ptr[i], reinterpret_cast<const uint8_t *>(v), who, n);
-    }
-}
-
 // The hud_visibility envs watched for the world kind (AKTH-0110): the tower interior with no map is the probe.
 EnvWatch g_hud_watch[] = {
     {"UIVisibility", 2 * 8, false, {}, false},
@@ -186,7 +137,6 @@ void hk_hud(void *a, void *b, void *c, void *d) {
             const uint8_t *tray = nullptr;
             if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray))
                 for (EnvWatch &w : g_hud_watch) watch(w, tray, n);
-            if (tray) fact_dump(tray, n);
         }
     }
     g_original_hud(a, b, c, d);
