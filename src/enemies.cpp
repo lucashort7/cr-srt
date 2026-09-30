@@ -83,7 +83,7 @@ struct Linked {
 };
 constexpr int kMaxLinked = 64;
 Linked g_linked[kMaxLinked];
-int g_linked_n, g_linked_logged = -1;
+int g_linked_n, g_linked_logged = -1, g_linked_nearest_logged = -1;
 int64_t g_linked_logged_at = -kListGapUs;
 float g_player_pos[3];
 bool g_player_located;
@@ -530,9 +530,15 @@ void walk_once(void *world, const player::State &s, long calls) {
     }
     log_new_kinds(calls);
     if (t0 - g_linked_logged_at >= kListGapUs) {
-        if (g_linked_n != g_linked_logged) {
+        // The sample is capped, so its count alone misses a hit on the nearest row: its points are the second key.
+        int nearest = 0;
+        for (int i = 0; i < g_linked_n; i++)
+            if (distance_to_player(g_linked[i].position) < distance_to_player(g_linked[nearest].position)) nearest = i;
+        const int points = g_linked_n ? game::points(g_linked[nearest].fraction, g_linked[nearest].max) : -1;
+        if (g_linked_n != g_linked_logged || points != g_linked_nearest_logged) {
             log_linked(calls);
             g_linked_logged = g_linked_n;
+            g_linked_nearest_logged = points;
         }
         g_linked_logged_at = t0;
     }
