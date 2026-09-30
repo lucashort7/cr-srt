@@ -86,7 +86,7 @@ inline constexpr Kind kKinds[] = {
     {0x504daed11f390c7cull, "sniper_overshield", Source::Paired},
     {0x22a6ec1be4b02ed0ull, "drifter_charge", Source::Paired},
     {0xb5c87403f8aa4595ull, "flux_horizontal_saw", Source::Paired},
-    {0xf54130012b8252e2ull, "miniboss_pursuer_overshield", Source::Paired},  // "VALHEIN", 22756 hp lv9, Pattern waves
+    {0xf54130012b8252e2ull, "miniboss_pursuer_overshield", Source::Paired},  // "WILHEM", 22756 hp lv9, Pattern waves
     {0xb5001270c3072968ull, "mini_blob", Source::Paired},  // 737 hp lv9, its own faction 9417cf1c with 35a0c348427de187
     // The player's companions, by the names the game's menus give them.
     {0xdc8de3fce9d33935ull, "mold_ally", Source::Seen},
