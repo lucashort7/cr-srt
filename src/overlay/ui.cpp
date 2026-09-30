@@ -242,9 +242,12 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     sonar::district(d);
     zone_clock(d, dt);
     char s[96];
-    // The sonar names no district in the Gap; the player's own InGap flag does.
+    // The sonar names no district in the Gap or in a challenge; the player's InGap flag and ChallengeModeInfo do.
+    float elapsed = 0.0f;
     if (!g_shown.has && !stale && p.in_gap)
         std::snprintf(s, sizeof s, "zone: THE_GAP");
+    else if (!g_shown.has && uistate::challenge(&elapsed))
+        std::snprintf(s, sizeof s, "zone: CHALLENGE");
     else if (!g_shown.has)
         std::snprintf(s, sizeof s, "zone: --");
     else if (g_shown.level == 0)

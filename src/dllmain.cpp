@@ -51,6 +51,8 @@ DWORD WINAPI boot_main(LPVOID) {
         if (!lifecycle::stopping && o.hudvis) lifecycle::uistate_hooked = uistate::install(exe, o.hudvis);
         if (!lifecycle::stopping && o.pausedet && uistate::install_pause(exe, o.pausedet))
             lifecycle::uistate_hooked = true;
+        if (!lifecycle::stopping && o.challenge && uistate::install_challenge(exe, o.challenge))
+            lifecycle::uistate_hooked = true;
         // the probe after the runner, whose world it reads
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             lifecycle::damage_hooked = damage::install(exe);

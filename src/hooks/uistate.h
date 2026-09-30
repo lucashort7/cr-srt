@@ -15,9 +15,13 @@ namespace crsrt::uistate {
 // MinHook must be initialised. False with the reason logged.
 bool install(HMODULE exe, uintptr_t hud_visibility_offset);
 bool install_pause(HMODULE exe, uintptr_t pause_detection_offset);
+bool install_challenge(HMODULE exe, uintptr_t update_score_offset);
 
 // AudioPause's flag as the last call read it: a hub screen or the pause menu is open. Any thread.
 bool paused();
+
+// ChallengeModeInfo as the last call read it: a challenge is running, and its elapsed seconds. Any thread.
+bool challenge(float *elapsed);
 
 // Threads inside either hook right now; the unloader waits for 0 before unmapping.
 long inflight();

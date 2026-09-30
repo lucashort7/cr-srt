@@ -183,6 +183,21 @@ inline constexpr char kPauseDetectName[] =
 inline constexpr int kPauseDetectSlots = 2;
 inline constexpr uintptr_t kPauseDetectAudioPause = 0;
 inline constexpr uintptr_t kAudioPauseFlag = 0;
+inline constexpr uintptr_t kHudVisJRPGState = 7 * 8;  // heron::ui_jrpg::env::JRPGState, a minigame's UI; a probe
+// The arcade, the game's "Challenge": heron::challenge_mode::update_score::system(Entity, Query, ChallengeModeInfo &,
+// ChallengeModeHudState &, LuaEvents &, FixedTime &), slots 2 and 3 the envs (its tray, 2026-09-30), called at the
+// fixed 30 Hz in and out of a challenge. ChallengeModeInfo, measured over five runs of the Central time trial: +0 a
+// pointer to the penalty toasts, +8 the toasts shown now, +c the most shown at once, +10 the challenge's hash
+// (d52fed40 outside one, e8187e3d in that trial), +14 = 1 while a challenge runs and 0 outside, +18 a 64-bit id, +20 a
+// hash (ffffffff outside), +28 the elapsed seconds as a float (0 at a restart, +3.0 per trap, frozen at the 180 s
+// limit), +2c 1e7, +30 -1.0f with no time made (the record, unverified), +3c = 1 while one runs. The world reloads
+// on entering and on leaving, and the sonar names no district inside.
+inline constexpr char kChallengeName[] =
+    "ecs::system::getName<void __cdecl heron::challenge_mode::update_score::system(";
+inline constexpr int kChallengeSlots = 6;
+inline constexpr uintptr_t kChallengeInfo = 2 * 8;
+inline constexpr uintptr_t kChallengeActive = 0x14;
+inline constexpr uintptr_t kChallengeElapsed = 0x28;
 
 // A Health row in points: its fraction of max, rounded to the nearest point.
 inline int points(float fraction, int32_t max) {

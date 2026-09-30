@@ -13,9 +13,10 @@ struct Offsets {
     uintptr_t get_player = 0;
     uintptr_t get_player_lookup = 0;  // where the scan found get_player's type hash; kept for the record
     uintptr_t runner = 0;
-    uintptr_t sonar = 0;     // optional: 0 when its solve failed, and cr-srt runs without the district
-    uintptr_t hudvis = 0;    // optional: heron::hud_visibility::system, the state probe (AKTH-0110)
-    uintptr_t pausedet = 0;  // optional: sndencore::pause_state_detection::system, the same probe
+    uintptr_t sonar = 0;      // optional: 0 when its solve failed, and cr-srt runs without the district
+    uintptr_t hudvis = 0;     // optional: heron::hud_visibility::system, the state probe (AKTH-0110)
+    uintptr_t pausedet = 0;   // optional: sndencore::pause_state_detection::system, the same probe
+    uintptr_t challenge = 0;  // optional: heron::challenge_mode::update_score::system, the arcade probe
 };
 
 enum class Status { Absent, BadVersion, BadFingerprint, Hit };

@@ -28,6 +28,7 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
         if (!o.sonar) changed |= (o.sonar = solve::system(exe, game::kSonarName, "sonar")) != 0;
         if (!o.hudvis) changed |= (o.hudvis = solve::system(exe, game::kHudVisibilityName, "hudvis")) != 0;
         if (!o.pausedet) changed |= (o.pausedet = solve::system(exe, game::kPauseDetectName, "pausedet")) != 0;
+        if (!o.challenge) changed |= (o.challenge = solve::system(exe, game::kChallengeName, "challenge")) != 0;
         if (changed) cache::save(fp, o);
         return true;
     }
@@ -46,6 +47,7 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
     o.sonar = solve::system(exe, game::kSonarName, "sonar");
     o.hudvis = solve::system(exe, game::kHudVisibilityName, "hudvis");
     o.pausedet = solve::system(exe, game::kPauseDetectName, "pausedet");
+    o.challenge = solve::system(exe, game::kChallengeName, "challenge");
     if (!o.get_player || !o.runner) {
         log::write("not solved (getplayer=%lx runner=%lx) - nothing cached", static_cast<unsigned long>(o.get_player),
                    static_cast<unsigned long>(o.runner));

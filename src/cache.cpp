@@ -82,6 +82,7 @@ Status load(uint64_t fp, Offsets &out) {
         if (len == 5 && std::strncmp(key, "sonar", 5) == 0) found.sonar = v;
         if (len == 6 && std::strncmp(key, "hudvis", 6) == 0) found.hudvis = v;
         if (len == 8 && std::strncmp(key, "pausedet", 8) == 0) found.pausedet = v;
+        if (len == 9 && std::strncmp(key, "challenge", 9) == 0) found.challenge = v;
     }
     if (!found.get_player || !found.runner) return Status::BadVersion;  // a line missing a key is solved again
     out = found;
@@ -96,12 +97,13 @@ void save(uint64_t fp, const Offsets &o) {
         return;
     }
     char line[256];
-    int n = wsprintfA(line,
-                      "%s%d %08lx%08lx getplayer=%lx getp_lookup=%lx runner=%lx sonar=%lx hudvis=%lx pausedet=%lx\r\n",
-                      kTag, kVersion, hi32(fp), lo32(fp), static_cast<unsigned long>(o.get_player),
-                      static_cast<unsigned long>(o.get_player_lookup), static_cast<unsigned long>(o.runner),
-                      static_cast<unsigned long>(o.sonar), static_cast<unsigned long>(o.hudvis),
-                      static_cast<unsigned long>(o.pausedet));
+    int n = wsprintfA(
+        line,
+        "%s%d %08lx%08lx getplayer=%lx getp_lookup=%lx runner=%lx sonar=%lx hudvis=%lx pausedet=%lx challenge=%lx\r\n",
+        kTag, kVersion, hi32(fp), lo32(fp), static_cast<unsigned long>(o.get_player),
+        static_cast<unsigned long>(o.get_player_lookup), static_cast<unsigned long>(o.runner),
+        static_cast<unsigned long>(o.sonar), static_cast<unsigned long>(o.hudvis),
+        static_cast<unsigned long>(o.pausedet), static_cast<unsigned long>(o.challenge));
     DWORD written = 0;
     WriteFile(h, line, static_cast<DWORD>(n), &written, nullptr);
     CloseHandle(h);
