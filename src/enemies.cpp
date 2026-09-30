@@ -69,13 +69,15 @@ uint8_t g_attachment[kMaxCapacity * game::kAttachmentRowSize];
 Enemy g_found[kMaxFound];
 uint8_t g_link[kMaxCapacity * 32];
 
-// A row with Health and HealthLink and no SpawnedNPC, for the log only: what the panel does not list.
+// A placed row with Health and no SpawnedNPC, for the log only: what the panel does not list (the player, a quest
+// NPC such as the Firebreaker escort, a linked health bar).
 struct Linked {
     uint64_t handle;
     int64_t arch;
     float fraction;
     int32_t max;
     float position[3];
+    uint32_t faction;  // 0 when the row has none
     uint32_t link_size;
     uint8_t link[16];
 };
@@ -182,7 +184,7 @@ const Class &class_of(const uint8_t *w, int64_t a) {
     c.kind = c.health < 0        ? kOther
              : c.spawned >= 0    ? kNpc
              : c.attachment >= 0 ? kAttached
-             : c.link >= 0       ? kLinked
+             : c.transform >= 0  ? kLinked  // any placed row with Health and no spawner: quest NPCs, the player
                                  : kOther;
     return c;
 }
@@ -268,15 +270,18 @@ void read_attachments(uint64_t chunk, const Class &c, uint32_t capacity) {
 // Rows of an archetype with Health and HealthLink and no SpawnedNPC, with the link row's first bytes: whose health
 // they carry, when the link names a handle. The link's width is its column's over the capacity, at most 32 bytes.
 void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch) {
-    const uint32_t column = g_offsets[c.link];
-    uint32_t next = UINT32_MAX;
-    for (uint32_t i = 0; i < c.count; i++)
-        if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
-    uint32_t width = next == UINT32_MAX ? 16 : (next - column) / capacity;
-    width = std::min<uint32_t>(width, 32);
-    if (!width || !copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform) ||
-        !copy_column(chunk, c.link, capacity, width, g_link))
-        return;
+    uint32_t width = 0;
+    if (c.link >= 0) {
+        const uint32_t column = g_offsets[c.link];
+        uint32_t next = UINT32_MAX;
+        for (uint32_t i = 0; i < c.count; i++)
+            if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
+        width = std::min<uint32_t>(next == UINT32_MAX ? 16 : (next - column) / capacity, 32);
+        if (!width || !copy_column(chunk, c.link, capacity, width, g_link)) return;
+    }
+    if (!copy_column(chunk, c.transform, capacity, game::kWorldTransformRowSize, g_transform)) return;
+    const bool has_faction =
+        c.faction >= 0 && copy_column(chunk, c.faction, capacity, game::kFactionRowSize, g_faction);
     for (uint32_t r = 0; r < capacity && g_linked_n < kMaxLinked; r++) {
         const uint8_t *health = g_health + r * game::kHealthRowSize;
         const auto fraction = at<float>(health);
@@ -294,8 +299,9 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
         l.max = max;
         std::memcpy(l.position, g_transform + r * game::kWorldTransformRowSize + game::kWorldPosition,
                     sizeof l.position);
+        if (has_faction) l.faction = at<uint32_t>(g_faction + r * game::kFactionRowSize);
         l.link_size = width;
-        std::memcpy(l.link, g_link + r * width, width < sizeof l.link ? width : sizeof l.link);
+        if (width) std::memcpy(l.link, g_link + r * width, width < sizeof l.link ? width : sizeof l.link);
     }
 }
 
@@ -444,23 +450,22 @@ float distance_to_player(const float p[3]) {
 }
 
 void log_linked(long calls) {
-    log::write("linked: %d rows with Health and HealthLink, no SpawnedNPC (call %ld), nearest first:", g_linked_n,
-               calls);
+    log::write("linked: %d placed rows with Health and no SpawnedNPC (call %ld), nearest first:", g_linked_n, calls);
     std::sort(g_linked, g_linked + g_linked_n, [](const Linked &a, const Linked &b) {
         return distance_to_player(a.position) < distance_to_player(b.position);
     });
     for (int i = 0; i < g_linked_n && i < kListLogRows; i++) {
         const Linked &l = g_linked[i];
-        char dist[24], link[16 * 3 + 1];
+        char dist[24], link[16 * 3 + 1] = "-";
         tenths(distance_to_player(l.position), dist);
         int n = 0;
         for (uint32_t b = 0; b < l.link_size && b < sizeof l.link; b++)
             n += wsprintfA(link + n, b % 4 == 3 ? "%02x " : "%02x", l.link[b]);
-        log::write("  %lx/%lu  %d/%ld  arch %ld  dist %s  link (%lu bytes) %s",
+        log::write("  %lx/%lu  %d/%ld  arch %ld  faction %08lx  dist %s  link (%lu bytes) %s",
                    static_cast<unsigned long>(static_cast<uint32_t>(l.handle)),
                    static_cast<unsigned long>(l.handle >> 32), game::points(l.fraction, l.max),
-                   static_cast<long>(l.max), static_cast<long>(l.arch), dist, static_cast<unsigned long>(l.link_size),
-                   link);
+                   static_cast<long>(l.max), static_cast<long>(l.arch), static_cast<unsigned long>(l.faction), dist,
+                   static_cast<unsigned long>(l.link_size), link);
     }
 }
 
