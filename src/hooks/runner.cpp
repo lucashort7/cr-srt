@@ -33,9 +33,21 @@ player::State g_player;
 // The last reading written to the log, so the log only gets a line when something changed.
 player::State g_logged;
 
-// The hook's own time on the game's thread, per 600 calls: what the runner call costs the game now that the enemy
-// walk is off it (AKTH-0103's QA asks for its max).
-int64_t g_own_sum_us, g_own_max_us;
+// The hook's own time on the game's thread, per 600 calls, and per phase: the max of each phase keeps the call that
+// set it, so a stall can be placed on a phase and a stamp (AKTH-0111, cr-meters-place-the-stall).
+struct Meter {
+    const char *name;
+    int64_t sum_us, max_us;
+    LONG max_call;
+};
+Meter g_meters[] = {
+    {"read", 0, 0, 0}, {"motion", 0, 0, 0}, {"lock", 0, 0, 0}, {"tick", 0, 0, 0}, {"original", 0, 0, 0}};
+enum Phase { kRead, kMotion, kLock, kTick, kOriginal };
+void meter(Phase p, int64_t us, LONG call) {
+    Meter &m = g_meters[p];
+    m.sum_us += us;
+    if (us > m.max_us) m.max_us = us, m.max_call = call;
+}
 const int64_t g_qpc_hz = [] {
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
@@ -101,6 +113,21 @@ void log_player(const player::State &s, LONG n) {
     g_logged = s;
 }
 
+// One line per 600 calls: avg and max of each phase with the call that set the max; the original call's own time is
+// the game's, kept apart so a stall inside it is not read as ours.
+void log_meters(LONG n) {
+    char line[320];
+    size_t k = 0;
+    for (Meter &m : g_meters) {
+        k += std::snprintf(line + k, sizeof line - k, "%s%s avg %ld max %ld@%ld", k ? ", " : "", m.name,
+                           static_cast<long>(m.sum_us / 600), static_cast<long>(m.max_us),
+                           static_cast<long>(m.max_call));
+        m.sum_us = m.max_us = 0;
+        m.max_call = 0;
+    }
+    log::write("runner: us over 600 calls: %s (call %ld)", line, static_cast<long>(n));
+}
+
 void hk_runner(void *a, void *b, void *c, void *d) {
     InterlockedIncrement(&g_inflight);
     LONG n = InterlockedIncrement(&g_calls);
@@ -116,29 +143,34 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         log_env_tray("runner", c, 5);  // slot 3 is FixedTime: a fixed step reads as a small float
         player::log_first_look(world);
     } else {
-        const int64_t t0 = now_us();
         if (void *was = g_world.load(); world != was) {
             log::write("runner: world %p -> %p (call %ld)", was, world, static_cast<long>(n));
             g_world = world;
         }
+        int64_t t = now_us();
         player::State s;
         player::read(world, s);
+        int64_t t1 = now_us();
+        meter(kRead, t1 - t, n), t = t1;
         motion::sample(s, n);
+        t1 = now_us();
+        meter(kMotion, t1 - t, n), t = t1;
         AcquireSRWLockExclusive(&g_lock);
         g_player = s;
         ReleaseSRWLockExclusive(&g_lock);
-        const int64_t us = now_us() - t0;
-        g_own_sum_us += us;
-        g_own_max_us = std::max(us, g_own_max_us);
+        t1 = now_us();
+        meter(kLock, t1 - t, n), t = t1;
+        if (Tick tick = g_tick.load(); tick && world) tick(world, n);
+        t1 = now_us();
+        meter(kTick, t1 - t, n);
         if (n % 600 == 0) {  // ~every 20 s at the runner's 30 calls a second
             log_player(s, n);
-            log::write("runner: own time avg %ld us, max %ld us over 600 calls", static_cast<long>(g_own_sum_us / 600),
-                       static_cast<long>(g_own_max_us));
-            g_own_sum_us = g_own_max_us = 0;
+            log_meters(n);
         }
     }
-    if (Tick tick = g_tick.load(); tick && world) tick(world, n);
+    const int64_t t0 = now_us();
     g_original(a, b, c, d);
+    if (n > 1) meter(kOriginal, now_us() - t0, n);
     InterlockedDecrement(&g_inflight);
 }
 
