@@ -65,21 +65,9 @@ bool g_stale_said;
 // them, and the allies within the same radius under them, at most `[allies] rows`, only while there is one.
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
-// [areas] <id's first 8 hex digits>=<label>: the name of a level the sonar gives no district for, as Lucas writes it.
-// g_area_label is the label read for g_area_labelled; an id counts as a zone's once held kAreaSettle seconds with a
-// district, the zone's: the id changes in the same second the sonar loses the district, while the shown zone lingers.
-constexpr float kAreaSettle = 2.0f;
-// g_zone_areas every id seen settled with a district since the inject: a zone's id comes back before its district.
-constexpr int kZoneAreas = 16;
-uint64_t g_area_labelled, g_zone_areas[kZoneAreas], g_area_last;
-int g_zone_area_count;
-float g_area_held;
-
-bool zone_area(uint64_t area) {
-    for (int i = 0; i < g_zone_area_count; i++)
-        if (g_zone_areas[i] == area) return true;
-    return false;
-}
+// [areas] <id's first 8 hex digits>=<label>: the name of a level, as Lucas writes it; g_area_label is the label read
+// for g_area_labelled. Every id is shown, labelled or not, so an unmapped one is seen and named (2026-10-01).
+uint64_t g_area_labelled;
 char g_area_label[32];
 
 enemies::List g_list;  // the render thread's copy, one per draw
@@ -297,20 +285,15 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
         std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
     if (!stale && p.in_story) std::strncat(s, " [story]", sizeof s - std::strlen(s) - 1);
     line(pen, s);
-    // the level the player is in, named by the Luau call that entered it, or by GameState's level id when the sonar
-    // names no district and the id is not the zone's: a building, by the [areas] label or the id's first digits
+    // the level the player is in: the Luau call that entered it, else GameState's level id by its [areas] label or its
+    // first digits, a zone, a building or an arena alike
     char seq[64];
     const uint64_t area = transit::area();
-    if (area != g_area_last) g_area_last = area, g_area_held = 0.0f;
-    g_area_held += dt;
-    if (g_shown.has && area && g_area_held >= kAreaSettle && !zone_area(area) && g_zone_area_count < kZoneAreas)
-        g_zone_areas[g_zone_area_count++] = area;
-    const bool in_area = !g_shown.has && area && g_area_held >= kAreaSettle && !zone_area(area);
     if (sequence::current(seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
-    else if (in_area && g_area_label[0] && area == g_area_labelled)
+    else if (area && g_area_label[0] && area == g_area_labelled)
         std::snprintf(s, sizeof s, "section: %s", g_area_label);
-    else if (in_area)
+    else if (area)
         std::snprintf(s, sizeof s, "section: %08lx", static_cast<unsigned long>(area >> 32));
     else
         std::snprintf(s, sizeof s, "section: --");
