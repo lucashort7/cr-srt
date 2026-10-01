@@ -42,20 +42,27 @@ void read_area(void *ctx) {
 const uint8_t *g_request_text;  // the last string pointer logged, so each is logged once
 
 // The string a TransitionRequest carries, logged when its pointer changes: a probe for the fast travel destination.
+constexpr long kPendingCalls = 3000;  // ~30 s of transition calls before the string is given up
+long g_pending_calls;
 uint32_t g_pending_len;
 const char *g_pending_chars;  // a request string not yet filled when it was seen
 
 void read_pending_string() {
     if (!g_pending_chars || g_pending_len == 0 || g_pending_len > 256) return;
     char buf[257] = {};
-    if (!mem::copy(g_pending_chars, buf, g_pending_len)) {
+    if (!mem::copy(g_pending_chars, buf, g_pending_len) || ++g_pending_calls > kPendingCalls) {
+        log::write("transit: request string gave up after %ld calls", g_pending_calls);
         g_pending_chars = nullptr;
         return;
     }
-    if (buf[0] == 0) return;
+    uint32_t printable = 0;
+    for (uint32_t i = 0; i < g_pending_len; i++)
+        if (buf[i] >= 0x20 && buf[i] <= 0x7e) printable++;
+    // text, not the leftovers of whatever held the buffer before
+    if (printable * 10 < g_pending_len * 9) return;
     for (char &c : buf)
         if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
-    log::write("transit: request string (%u): \"%s\"", g_pending_len, buf);
+    log::write("transit: request string (%u, after %ld calls): \"%s\"", g_pending_len, g_pending_calls, buf);
     g_pending_chars = nullptr;
 }
 
@@ -81,6 +88,7 @@ void read_request(void *ctx, long call) {
     // after the request appears (2026-10-01: empty at the diff, so it is read on later calls until a byte shows)
     std::memcpy(&g_pending_len, raw + 0x14, 4);
     std::memcpy(&g_pending_chars, raw + 0x18, 8);
+    g_pending_calls = 0;
     uint8_t own[0x50] = {};
     if (mem::copy(req + 0x30, own, sizeof own)) {
         char h2[sizeof own * 2 + 1] = {};
