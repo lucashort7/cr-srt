@@ -13,10 +13,11 @@ inline constexpr wchar_t kExeName[] = L"CONTROLResonant.exe";
 // --- Presenting. The game presents through one wrapper, once a frame. Its only argument is an object whose [0] is
 // the engine's d3d::SwapChain: [0] HWND, [1] IDXGISwapChain*, [2] FFX context; byte +0x62 set = Streamline made
 // it, +0x68 = 1 with DLSS frame generation, 2 with FSR's.
-inline constexpr uintptr_t kPresentWrapper = 0x1cfead0;
+inline constexpr uintptr_t kPresentWrapper = 0x1d25d60;  // build 1.4.0; 0x1cfead0 in the 2026-09-24 build
 inline constexpr uint8_t kPresentWrapperPrologue[] = {0x4c, 0x8b, 0xdc, 0x53, 0x56, 0x57, 0x48, 0x83, 0xec, 0x60};
-inline constexpr uintptr_t kDirectQueueGlobal = 0x5c37248;  // *(*(exe+off)+0x10) = the Direct ID3D12CommandQueue*
-inline constexpr uintptr_t kDeviceGlobal = 0x5c371e8;       // *(exe+off) = the ID3D12Device*
+inline constexpr uintptr_t kDirectQueueGlobal =
+    0x5d07a28;  // build 1.4.0 (0x5c37248 before); *(*(exe+off)+0x10) = the Direct ID3D12CommandQueue*
+inline constexpr uintptr_t kDeviceGlobal = 0x5d079c8;  // build 1.4.0 (0x5c371e8 before); *(exe+off) = the ID3D12Device*
 
 // --- The ECS world, read the way get_player reads it. With w = the world:
 //   chunk(arch)  = *(u64*)(w + (arch + 10) * 8)
@@ -134,7 +135,7 @@ inline constexpr int32_t kSystemFnSlot = 0x140;
 // --- The camera, as RadarPlus reads it (crmods/RadarPlus, its log and projectWorld): the view-projection matrix at
 // +0x1c8 of the camera at exe+0x5c2c020, 16 doubles, clip = [x y z 1] * M, screen X = (x+1)/2*W, Y = (1-y)/2*H. The
 // global is the camera itself: its getter is `lea rax,[camera]; ret`. The 2026-09-24 build only.
-inline constexpr uintptr_t kCamera = 0x5c2c020;
+inline constexpr uintptr_t kCamera = 0x5cfc930;  // build 1.4.0, from RadarPlus 1.5.3's log; 0x5c2c020 before
 inline constexpr uintptr_t kCameraViewProj = 0x1c8;
 
 // --- A system's envs. The runner's third argument holds at +0x58 a tray of pointers, one 8-byte slot per parameter of
