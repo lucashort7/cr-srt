@@ -26,8 +26,10 @@ static_assert(sizeof(Entry) == 32);
 // The world's chunk-slot table and the entries of the slots in use, copied on load and read from the copy after.
 class World {
    public:
-    // Copies the slot table a block at a time up to the first block that fails, then the entries up to the highest slot
-    // holding a chunk. False, and empty, when no slot reads.
+    // Copies the slot table a block at a time up to the first block that fails or the first value that is no chunk
+    // pointer, then the entries up to the highest slot holding a chunk. False, and empty, when no slot reads. Past the
+    // chunks the table is followed by something else: small integers from slot 8319 in every 2026-09-28 snapshot, after
+    // zeros from 1268, which a walk would read as chunks.
     bool load(const mem::Source &source, uint64_t world);
 
     const mem::Source &source() const { return *source_; }
@@ -61,6 +63,8 @@ class Columns {
    public:
     // Copies slot `index`'s hashes and offsets. False when either copy fails, or the count is 0 or past kMaxColumns.
     bool read(const World &world, int64_t index);
+    // The same off an entry read on its own (read_entry).
+    bool read(const mem::Source &source, const Entry &entry);
 
     uint32_t count() const { return count_; }
     uint32_t hash(uint32_t i) const { return hashes_[i]; }

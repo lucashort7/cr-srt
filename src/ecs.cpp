@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <span>
 #include <vector>
 
 namespace crsrt::ecs {
@@ -34,6 +35,9 @@ uint64_t entry_address(uint64_t world, int64_t index) {
 
 const Entry g_no_entry;
 
+// A value a chunk slot can hold: a 16-aligned address in user space. What follows the table holds small integers.
+bool is_chunk(uint64_t v) { return v >= 0x10000 && v % 16 == 0 && v < 0x800000000000ull; }
+
 }  // namespace
 
 uint64_t slot_address(uint64_t world, int64_t index) {
@@ -48,7 +52,10 @@ bool World::load(const mem::Source &source, uint64_t world) {
     while (read < game::kChunkSlots) {
         const int64_t n = std::min(kSlotBlock, game::kChunkSlots - read);
         if (!world || !source.copy(slot_address(world, read), &slots_[static_cast<size_t>(read)], n * 8ull)) break;
-        read += n;
+        const auto block = std::span(slots_).subspan(static_cast<size_t>(read), static_cast<size_t>(n));
+        const auto other = std::ranges::find_if(block, [](uint64_t v) { return v && !is_chunk(v); });
+        read += other - block.begin();
+        if (other != block.end()) break;
     }
     int64_t used = read;
     while (used > 0 && !slots_[static_cast<size_t>(used - 1)]) used--;
@@ -79,11 +86,12 @@ int64_t World::find(uint64_t chunk) const {
     return at == slots_.end() ? -1 : at - slots_.begin();
 }
 
-bool Columns::read(const World &world, int64_t index) {
-    const Entry &e = world.entry(index);
+bool Columns::read(const World &world, int64_t index) { return read(world.source(), world.entry(index)); }
+
+bool Columns::read(const mem::Source &source, const Entry &e) {
     count_ = 0;
-    if (!e.count || e.count > kMaxColumns || !world.source().copy(e.hashes, hashes_, e.count * 4ull) ||
-        !world.source().copy(e.offsets, offsets_, e.count * 4ull))
+    if (!e.count || e.count > kMaxColumns || !source.copy(e.hashes, hashes_, e.count * 4ull) ||
+        !source.copy(e.offsets, offsets_, e.count * 4ull))
         return false;
     count_ = e.count;
     return true;

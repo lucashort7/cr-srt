@@ -38,7 +38,7 @@ TEST(the_world_loads_every_slot_in_use) {
     const Loaded l;
     CHECK(l.ok);
     for (const auto &a : l.snap.archetypes()) CHECK(l.world.chunk(a.index) == a.chunk);
-    CHECK(l.world.slots() > kPlayerSlot);
+    CHECK(l.world.slots() == 1268);  // the chunks end at 1267; the table holds other values from 8319
     CHECK(l.world.chunk(l.world.slots()) == 0);
     CHECK(l.world.entry(-1).count == 0);
 }

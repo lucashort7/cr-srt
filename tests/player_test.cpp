@@ -87,7 +87,7 @@ TEST(a_moved_slot_resolves_again) {
     counting.moved_at = ecs::slot_address(snap.world(), kPlayerSlot);
     counting.moved_to = chunk + 0x1000;
     player::read_chunk(counting, snap.world(), chunk, s);
-    CHECK(counting.copies > kKeptCopies + 20);
+    CHECK(counting.copies > kKeptCopies + 10);  // the table in 17 blocks of 512 slots, to the first non-chunk
     CHECK(!s.has_health);
     counting.moved_at = 0;
     counting.copies = 0;

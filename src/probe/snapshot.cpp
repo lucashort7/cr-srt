@@ -72,15 +72,18 @@ void take(const uint8_t *world, long calls, const char *why) {
         std::memcpy(g_buf.data() + world_at, &world_len, 4);
     }
 
-    // The tables through the copy-based reader; the blobs bounded by VirtualQuery, which an F9 press can afford.
+    // The tables through the copy-based reader, every entry up to kArchetypeMax: an archetype with no chunk has tables
+    // too (up to slot 8194 on 2026-09-28, the chunks ending at 1267). The blobs bounded by VirtualQuery, which an F9
+    // press can afford.
     static ecs::World w;
     static ecs::Columns columns;
     int archs = 0, blobs = 0, capped = 0, lost = 0;
     if (w.load(mem::live(), reinterpret_cast<uint64_t>(world))) {
-        for (int64_t a = 0; a < w.slots(); a++) {
-            if (!columns.read(w, a)) continue;
+        for (int64_t a = 0; a < game::kArchetypeMax; a++) {
+            ecs::Entry entry;
+            if (!ecs::read_entry(mem::live(), reinterpret_cast<uint64_t>(world), a, entry)) break;
+            if (!columns.read(mem::live(), entry)) continue;
             const uint64_t chunk = w.chunk(a);
-            const ecs::Entry &entry = w.entry(a);
             uint32_t blob = 0;
             if (chunk && columns.index(game::kHealth) >= 0) {
                 uint32_t last = 0;
