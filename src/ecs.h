@@ -64,6 +64,8 @@ class Columns {
 
     uint32_t count() const { return count_; }
     uint32_t hash(uint32_t i) const { return hashes_[i]; }
+    // Column i's offset from the chunk, i below count().
+    uint32_t offset_at(uint32_t i) const { return offsets_[i]; }
     // The column of type `hash`, or -1.
     int index(uint32_t hash) const;
     // The column's offset from the chunk; kAbsent when the archetype lacks the type.

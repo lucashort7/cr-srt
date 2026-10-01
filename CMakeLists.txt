@@ -48,6 +48,7 @@ add_library(crsrt-core STATIC
   src/envwatch.cpp
   src/motion.cpp
   src/player.cpp
+  src/enemies.cpp
   src/hooks/runner.cpp)
 target_include_directories(crsrt-core PUBLIC src)
 target_compile_options(crsrt-core PRIVATE -Wall -Wextra)
@@ -56,7 +57,6 @@ target_link_libraries(crsrt-core PUBLIC minhook)
 add_library(cr-srt SHARED
   src/dllmain.cpp
   src/unload.cpp
-  src/enemies.cpp
   src/hooks/damage.cpp
   src/hooks/present.cpp
   src/hooks/script.cpp
@@ -88,6 +88,7 @@ target_link_options(cr-probe PRIVATE -static -s)
 add_executable(crsrt-tests
   tests/main.cpp
   tests/ecs_test.cpp
+  tests/enemies_test.cpp
   tests/fixtures_test.cpp
   tests/memory_test.cpp
   tests/snapfile_test.cpp)

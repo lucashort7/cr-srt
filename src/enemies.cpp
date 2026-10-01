@@ -1,13 +1,14 @@
 // enemies.cpp
 #include "enemies.h"
 
+#include "ecs.h"
 #include "game.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
 #include "log.h"
-#include "memory.h"
 #include "names.h"
 #include "player.h"
+#include "source.h"
 
 #include <windows.h>
 
@@ -20,7 +21,6 @@ namespace crsrt::enemies {
 
 namespace {
 
-constexpr uint32_t kMaxTypes = 4096;    // an archetype's column count, at most (ecs::archetype's bound)
 constexpr uint32_t kMaxCapacity = 256;  // rows in one chunk of interest, at most; 10 is the most seen
 constexpr int kMaxFound = 512;
 constexpr int64_t kLogPeriodUs = 20'000'000;  // between two cost lines
@@ -39,9 +39,10 @@ DWORD g_interval_ms = kIntervalDefaultMs;
 enum Kind : uint8_t { kUnread, kOther, kNpc, kAttached, kLinked };
 
 // What an archetype's columns say, kept while its entry points at the same hashes: an archetype's types never change,
-// its offsets do (a chunk reallocated from 10 rows to 2 moved every column), so offsets are read on every walk.
+// its offsets do (a chunk reallocated from 10 rows to 2 moved every column), so its columns are read on every walk.
+// Each field is a column index in ecs::Columns, -1 when absent.
 struct Class {
-    const void *hashes = nullptr;
+    uint64_t hashes = 0;
     uint32_t count = 0;
     Kind kind = kUnread;
     int16_t health = -1, spawned = -1, faction = -1, level = -1, transform = -1, attachment = -1, combat = -1;
@@ -55,11 +56,12 @@ struct Shield {
 };
 
 Class g_class[game::kChunkSlots];
-const uint8_t *g_class_world;
+uint64_t g_class_world;
 
-// Walk thread only. Every copy of game memory outside the world object lands in one of these.
-uint32_t g_types[kMaxTypes];
-uint32_t g_offsets[kMaxTypes];
+// Walk thread only. Every byte the walk reads is a copy in one of these: the slot table and entries in g_world, an
+// archetype's columns in g_columns, a chunk's rows in the arrays below.
+ecs::World g_world;
+ecs::Columns g_columns;
 uint64_t g_handles[kMaxCapacity];
 uint8_t g_health[kMaxCapacity * game::kHealthRowSize];
 uint8_t g_spawned[kMaxCapacity * game::kSpawnedNpcRowSize];
@@ -91,18 +93,18 @@ bool g_player_located;
 Shield g_shields[kMaxFound];
 
 // What one walk did. Classifications: a slot never seen, an entry now pointing at other hashes, a failed copy tried
-// again. Failed copies: an archetype's hashes, its offsets, its chunk's rows. Rejected: rows with an entity handle
-// whose Health did not read as alive (a fraction outside (0, 1], a max of 0): a dead row, or one torn by the game
-// writing it while this thread read, since the walk no longer runs inside a system call.
+// again. Failed copies: an archetype's columns (its hashes and offsets), its chunk's rows. Rejected: rows with an
+// entity handle whose Health did not read as alive (a fraction outside (0, 1], a max of 0): a dead row, or one torn by
+// the game writing it while this thread read, since the walk no longer runs inside a system call.
 struct Count {
     int fresh = 0, changed = 0, retried = 0, chunks = 0, unbounded = 0;
-    int lost_types = 0, lost_offsets = 0, lost_rows = 0, rejected = 0;
+    int lost_columns = 0, lost_rows = 0, rejected = 0;
     int64_t combat_us = 0, slots_us = 0;  // where the walk's time went: the CombatStatus probe, the slot loop
     uint64_t cycles = 0;                  // the CPU cycles this thread spent in it: wall time minus time off the CPU
 
     void add(const Count &o) {
         fresh += o.fresh, changed += o.changed, retried += o.retried, chunks += o.chunks, unbounded += o.unbounded;
-        lost_types += o.lost_types, lost_offsets += o.lost_offsets, lost_rows += o.lost_rows, rejected += o.rejected;
+        lost_columns += o.lost_columns, lost_rows += o.lost_rows, rejected += o.rejected;
     }
 } g_walk;
 
@@ -145,32 +147,28 @@ T at(const uint8_t *p) {
     return v;
 }
 
-const uint8_t *entry_of(const uint8_t *w, int64_t a) { return w + 8 + (a + game::kTypeEntryBias) * 32; }
-
-// The class of archetype a, read again when its entry points at another hashes array. A failed copy stays unread and
-// is tried again on the next walk.
-const Class &class_of(const uint8_t *w, int64_t a) {
-    const uint8_t *entry = entry_of(w, a);
-    const void *hashes = at<const void *>(entry + 8);
-    const uint32_t count = at<uint32_t>(entry + 0x1c);
+// The class of slot a, read again when its entry points at another hashes array; g_columns then holds its columns. A
+// failed copy stays unread and is tried again on the next walk.
+const Class &class_of(int64_t a) {
+    const ecs::Entry &entry = g_world.entry(a);
     Class &c = g_class[a];
-    if (c.kind != kUnread && c.hashes == hashes && c.count == count) return c;
+    if (c.kind != kUnread && c.hashes == entry.hashes && c.count == entry.count) return c;
     (c.kind != kUnread ? g_walk.changed : c.hashes ? g_walk.retried : g_walk.fresh)++;
     c = {};
-    if (!hashes || !count || count > kMaxTypes) {
-        c = {hashes, count, kOther};
+    if (!entry.hashes || !entry.count || entry.count > ecs::kMaxColumns) {
+        c = {entry.hashes, entry.count, kOther};
         return c;
     }
-    if (!mem::copy(hashes, g_types, count * 4)) {
-        g_walk.lost_types++;
-        c.hashes = hashes;  // still kUnread: tried again next walk, counted as a retry
+    if (!g_columns.read(g_world, a)) {
+        g_walk.lost_columns++;
+        c.hashes = entry.hashes;  // still kUnread: tried again next walk, counted as a retry
         return c;
     }
-    c.hashes = hashes;
-    c.count = count;
-    for (uint32_t i = 0; i < count; i++) {
+    c.hashes = entry.hashes;
+    c.count = entry.count;
+    for (uint32_t i = 0; i < c.count; i++) {
         const auto k = static_cast<int16_t>(i);
-        switch (g_types[i]) {
+        switch (g_columns.hash(i)) {
             case game::kHealth: c.health = k; break;
             case game::kSpawnedNpc: c.spawned = k; break;
             case game::kFactionData: c.faction = k; break;
@@ -190,22 +188,15 @@ const Class &class_of(const uint8_t *w, int64_t a) {
     return c;
 }
 
-// The archetype's offsets into g_offsets and its chunk's capacity: the Health column's width over its row, exact since
+// Slot a's columns into g_columns, fresh, and its chunk's capacity: the Health column's width over its row, exact since
 // a 0x38-byte row outweighs the column's padding. 0 when the copy fails or nothing bounds the column.
-uint32_t read_offsets(const uint8_t *entry, const Class &c) {
-    if (!mem::copy(at<const void *>(entry + 0x10), g_offsets, c.count * 4)) {
-        g_walk.lost_offsets++;
+uint32_t read_columns(int64_t a) {
+    if (!g_columns.read(g_world, a)) {
+        g_walk.lost_columns++;
         return 0;
     }
-    const uint32_t column = g_offsets[c.health];
-    uint32_t next = UINT32_MAX;
-    for (uint32_t i = 0; i < c.count; i++)
-        if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
-    if (next == UINT32_MAX) {
-        g_walk.unbounded++;
-        return 0;
-    }
-    const uint32_t capacity = (next - column) / game::kHealthRowSize;
+    const uint32_t capacity = g_columns.capacity(game::kHealth, game::kHealthRowSize);
+    if (!capacity) g_walk.unbounded++;
     return capacity <= kMaxCapacity ? capacity : 0;
 }
 
@@ -215,7 +206,7 @@ bool copy_column(uint64_t chunk, int16_t index, uint32_t capacity, uint32_t size
         std::memset(out, 0, static_cast<size_t>(capacity) * size);
         return true;
     }
-    if (mem::copy(reinterpret_cast<const void *>(chunk + g_offsets[index]), out, static_cast<size_t>(capacity) * size))
+    if (ecs::copy_rows(g_world.source(), chunk, g_columns.offset_at(static_cast<uint32_t>(index)), capacity, size, out))
         return true;
     g_walk.lost_rows++;
     return false;
@@ -273,11 +264,8 @@ void read_attachments(uint64_t chunk, const Class &c, uint32_t capacity) {
 void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch) {
     uint32_t width = 0;
     if (c.link >= 0) {
-        const uint32_t column = g_offsets[c.link];
-        uint32_t next = UINT32_MAX;
-        for (uint32_t i = 0; i < c.count; i++)
-            if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
-        width = std::min<uint32_t>(next == UINT32_MAX ? 16 : (next - column) / capacity, 32);
+        const uint32_t column = g_columns.width(game::kHealthLink);
+        width = std::min<uint32_t>(column ? column / capacity : 16, 32);
         if (!width || !copy_column(chunk, c.link, capacity, width, g_link)) return;
     }
     // Rows without a faction are the destructible props (50/50, 9999/9999 by the hundred) and would fill the sample.
@@ -308,16 +296,13 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
 }
 
 // The player's CombatStatus row, up to 32 bytes, to the log when it changes, at most once a second: a probe of what
-// flips when a fight starts and ends. g_offsets holds the player's archetype.
+// flips when a fight starts and ends. g_columns holds the player's archetype.
 void log_combat(uint64_t chunk, const Class &c, long calls, int64_t now) {
-    const uint32_t column = g_offsets[c.combat];
-    uint32_t next = UINT32_MAX;
-    for (uint32_t i = 0; i < c.count; i++)
-        if (g_offsets[i] > column && g_offsets[i] < next) next = g_offsets[i];
-    const uint32_t width = std::min<uint32_t>(next == UINT32_MAX ? 16 : next - column, sizeof g_combat_logged);
+    const uint32_t column = g_columns.offset_at(static_cast<uint32_t>(c.combat));
+    const uint32_t bytes = g_columns.width(game::kCombatStatus);
+    const uint32_t width = std::min<uint32_t>(bytes ? bytes : 16, sizeof g_combat_logged);
     uint8_t row[sizeof g_combat_logged] = {};
-    if (now - g_combat_logged_at < kListGapUs ||
-        !mem::copy(reinterpret_cast<const void *>(chunk + column), row, width) ||
+    if (now - g_combat_logged_at < kListGapUs || !ecs::copy_rows(g_world.source(), chunk, column, 1, width, row) ||
         !std::memcmp(row, g_combat_logged, sizeof row))
         return;
     char hex[sizeof row * 3 + 1];
@@ -330,13 +315,12 @@ void log_combat(uint64_t chunk, const Class &c, long calls, int64_t now) {
 
 // The CombatStatus probe on the player's chunk, which is the slot of the archetype the runner resolved (player::State
 // arch): the runner's memo (player::health_row) is its thread's, so nothing of it is read here.
-void probe_combat(const uint8_t *w, int64_t slots, const player::State &s, long calls, int64_t now) {
-    if (s.arch < 0 || s.arch >= slots) return;
-    const uint64_t chunk = reinterpret_cast<const uint64_t *>(w + game::kChunkSlotBias * 8)[s.arch];
+void probe_combat(const player::State &s, long calls, int64_t now) {
+    const uint64_t chunk = g_world.chunk(s.arch);
     if (!chunk) return;
-    const Class &c = class_of(w, s.arch);
+    const Class &c = class_of(s.arch);
     if (c.health < 0 || c.combat < 0) return;
-    const uint32_t capacity = read_offsets(entry_of(w, s.arch), c);
+    const uint32_t capacity = read_columns(s.arch);
     if (capacity != 1 && !g_player_row_said) {
         log::write("enemies: the player's chunk holds %lu rows, read as row 0", static_cast<unsigned long>(capacity));
         g_player_row_said = true;
@@ -344,17 +328,16 @@ void probe_combat(const uint8_t *w, int64_t slots, const player::State &s, long 
     if (capacity) log_combat(chunk, c, calls, now);
 }
 
-// Slots [0, slots) and their entries, all inside the world object's readable region. The player's position is the
-// runner's last reading, not a lookup of this thread's: the distances are to where the runner last saw the player.
-void walk(void *world, int64_t slots, const player::State &s, long calls, int64_t now) {
-    const auto *w = static_cast<const uint8_t *>(world);
-    if (w != g_class_world) {
+// Every slot g_world copied. The player's position is the runner's last reading, not a lookup of this thread's: the
+// distances are to where the runner last saw the player.
+void walk(const player::State &s, long calls, int64_t now) {
+    if (g_world.address() != g_class_world) {
         for (Class &c : g_class) c = {};
-        g_class_world = w;
+        g_class_world = g_world.address();
     }
     g_found_n = g_shields_n = 0;
     const int64_t t0 = now_us();
-    probe_combat(w, slots, s, calls, now);
+    probe_combat(s, calls, now);
     const int64_t t1 = now_us();
     g_walk.combat_us = t1 - t0;
     // The linked rows feed a log line at most once a second: their chunks are read on one walk in kListGapUs.
@@ -365,17 +348,17 @@ void walk(void *world, int64_t slots, const player::State &s, long calls, int64_
     g_player_located = located;
     if (located) std::memcpy(g_player_pos, player, sizeof g_player_pos);
 
-    const auto *slot = reinterpret_cast<const uint64_t *>(w + game::kChunkSlotBias * 8);
+    const int64_t slots = std::min(g_world.slots(), game::kChunkSlots);
     for (int64_t a = 0; a < slots; a++) {
-        const uint64_t chunk = slot[a];
+        const uint64_t chunk = g_world.chunk(a);
         if (!chunk) continue;
-        const Class &c = class_of(w, a);
+        const Class &c = class_of(a);
         if (c.kind != kNpc && c.kind != kAttached && (c.kind != kLinked || !sample_linked || g_linked_n >= kMaxLinked))
             continue;
         g_walk.chunks++;
-        const uint32_t capacity = read_offsets(entry_of(w, a), c);
+        const uint32_t capacity = read_columns(a);
         if (!capacity) continue;
-        if (!mem::copy(reinterpret_cast<const void *>(chunk + game::kEntityColumn), g_handles, capacity * 8ull)) {
+        if (!g_world.source().copy(chunk + game::kEntityColumn, g_handles, capacity * 8ull)) {
             g_walk.lost_rows++;
             continue;
         }
@@ -408,15 +391,20 @@ void walk(void *world, int64_t slots, const player::State &s, long calls, int64_
         std::sort(g_found, g_found + g_found_n, [](const Enemy &a, const Enemy &b) { return a.distance < b.distance; });
 }
 
+// The walk's rows as a List: nearest first, at most kMaxRows, every row counted.
+void fill(List &out, long calls) {
+    out.calls = calls;
+    out.total = g_found_n;
+    out.allies = 0;
+    for (int i = 0; i < g_found_n; i++)
+        if (names::is_ally(g_found[i].faction)) out.allies++;
+    out.count = std::min(g_found_n, kMaxRows);
+    std::copy(g_found, g_found + out.count, out.rows);
+}
+
 void publish(long calls) {
     AcquireSRWLockExclusive(&g_lock);
-    g_list.calls = calls;
-    g_list.total = g_found_n;
-    g_list.allies = 0;
-    for (int i = 0; i < g_found_n; i++)
-        if (names::is_ally(g_found[i].faction)) g_list.allies++;
-    g_list.count = std::min(g_found_n, kMaxRows);
-    std::copy(g_found, g_found + g_list.count, g_list.rows);
+    fill(g_list, calls);
     ReleaseSRWLockExclusive(&g_lock);
 }
 
@@ -497,21 +485,17 @@ void log_list(long calls) {
 // One walk of the world the runner last saw, at the runner's call `calls`, with the player as the runner last read it.
 void walk_once(void *world, const player::State &s, long calls) {
     const int64_t t0 = now_us();
-    // One check covers every slot and entry the walk reads: the slots whose entry ends inside the world's region.
-    const size_t run = mem::readable_run(world);
-    const int64_t entries = run > 8 ? static_cast<int64_t>((run - 8) / 32) - game::kTypeEntryBias : 0;
-    const int64_t slots = std::min(game::kChunkSlots, entries);
-    if (slots <= 0) {
-        if (!g_unreadable_said)
-            log::write("enemies: the world %p is readable for %lu bytes, short of any archetype entry", world,
-                       static_cast<unsigned long>(run));
-        g_unreadable_said = true;
-        return;
-    }
     g_walk = {};
     ULONG64 c0 = 0, c1 = 0;
     QueryThreadCycleTime(GetCurrentThread(), &c0);
-    walk(world, slots, s, calls, t0);
+    // The slot table and the entries in use, copied: nothing below reads the world in place.
+    if (!g_world.load(mem::live(), reinterpret_cast<uint64_t>(world))) {
+        if (!g_unreadable_said) log::write("enemies: the world %p has no slot that reads", world);
+        g_unreadable_said = true;
+        return;
+    }
+    const int64_t slots = g_world.slots();
+    walk(s, calls, t0);
     publish(calls);
     QueryThreadCycleTime(GetCurrentThread(), &c1);
     const int64_t us = now_us() - t0;
@@ -562,18 +546,18 @@ void log_period() {
         g_period.slow, static_cast<long>(kBudgetUs), g_period.walks, g_period.idle,
         static_cast<unsigned long>(g_interval_ms), g_found_n, g_shields_n);
     log::write(
-        "  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, "
-        "%d rows; %d rows rejected; %d Health columns unbounded",
-        t.fresh, t.changed, t.retried, t.chunks, t.lost_types, t.lost_offsets, t.lost_rows, t.rejected, t.unbounded);
+        "  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows "
+        "rejected; %d Health columns unbounded",
+        t.fresh, t.changed, t.retried, t.chunks, t.lost_columns, t.lost_rows, t.rejected, t.unbounded);
     // The slowest walk's cycles as microseconds at the period's rate: far under its wall time = off the CPU.
     const long on_cpu = g_period.sum_cycles
                             ? static_cast<long>(m.cycles * static_cast<uint64_t>(g_period.sum_us) / g_period.sum_cycles)
                             : -1;
     log::write(
         "  the slowest walk: combat probe %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, "
-        "%d changed, %d retried; %d chunks; copies failed: %d types, %d offsets, %d rows; %d rows rejected",
+        "%d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows rejected",
         static_cast<long>(m.combat_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed, m.retried, m.chunks,
-        m.lost_types, m.lost_offsets, m.lost_rows, m.rejected);
+        m.lost_columns, m.lost_rows, m.rejected);
     g_period = {};
 }
 
@@ -652,6 +636,13 @@ bool stop() {
     CloseHandle(g_stop_event);
     g_thread = g_stop_event = nullptr;
     return true;
+}
+
+void scan(const mem::Source &source, uint64_t world, const player::State &player, List &out) {
+    out = {};
+    if (!g_world.load(source, world)) return;
+    walk(player, 0, now_us());
+    fill(out, 0);
 }
 
 void read(List &out) {

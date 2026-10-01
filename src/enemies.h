@@ -7,6 +7,9 @@
 // off the game's thread: story AKTH-0103.
 #pragma once
 
+#include "player.h"
+#include "source.h"
+
 #include <cstdint>
 
 namespace crsrt::enemies {
@@ -45,5 +48,9 @@ bool stop();
 
 // The last published list. Any thread.
 void read(List &out);
+
+// One walk of the world at `world` in `source`, as the walk thread runs it, with the player as `player` holds it: the
+// list it would publish. For the tests, on a thread that is not the walk's.
+void scan(const mem::Source &source, uint64_t world, const player::State &player, List &out);
 
 }  // namespace crsrt::enemies
