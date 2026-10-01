@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace crsrt::ecs {
 
@@ -25,6 +26,106 @@ uintptr_t g_find_type = 0;
 }  // namespace
 
 void set_find_type(uintptr_t exe_offset) { g_find_type = exe_offset; }
+
+namespace {
+
+constexpr int64_t kSlotBlock = 512;   // slots per copy: 4 KB
+constexpr int64_t kEntryBlock = 128;  // entries per copy: 4 KB
+
+uint64_t entry_address(uint64_t world, int64_t index) {
+    return world + 8 + static_cast<uint64_t>(index + game::kTypeEntryBias) * 32;
+}
+
+const Entry g_no_entry;
+
+}  // namespace
+
+uint64_t slot_address(uint64_t world, int64_t index) {
+    return world + static_cast<uint64_t>(index + game::kChunkSlotBias) * 8;
+}
+
+bool World::load(const mem::Source &source, uint64_t world) {
+    source_ = &source;
+    world_ = world;
+    slots_.resize(static_cast<size_t>(game::kChunkSlots));
+    int64_t read = 0;
+    while (read < game::kChunkSlots) {
+        const int64_t n = std::min(kSlotBlock, game::kChunkSlots - read);
+        if (!world || !source.copy(slot_address(world, read), &slots_[static_cast<size_t>(read)], n * 8ull)) break;
+        read += n;
+    }
+    int64_t used = read;
+    while (used > 0 && !slots_[static_cast<size_t>(used - 1)]) used--;
+    slots_.resize(static_cast<size_t>(used));
+    entries_.resize(static_cast<size_t>(used));
+    int64_t got = 0;
+    while (got < used) {
+        const int64_t n = std::min(kEntryBlock, used - got);
+        if (!source.copy(entry_address(world, got), &entries_[static_cast<size_t>(got)], n * sizeof(Entry))) break;
+        got += n;
+    }
+    slots_.resize(static_cast<size_t>(got));
+    entries_.resize(static_cast<size_t>(got));
+    return got > 0;
+}
+
+uint64_t World::chunk(int64_t index) const {
+    return index >= 0 && index < slots() ? slots_[static_cast<size_t>(index)] : 0;
+}
+
+const Entry &World::entry(int64_t index) const {
+    return index >= 0 && index < slots() ? entries_[static_cast<size_t>(index)] : g_no_entry;
+}
+
+int64_t World::find(uint64_t chunk) const {
+    if (!chunk) return -1;
+    const auto at = std::ranges::find(slots_, chunk);
+    return at == slots_.end() ? -1 : at - slots_.begin();
+}
+
+bool Columns::read(const World &world, int64_t index) {
+    const Entry &e = world.entry(index);
+    count_ = 0;
+    if (!e.count || e.count > kMaxColumns || !world.source().copy(e.hashes, hashes_, e.count * 4ull) ||
+        !world.source().copy(e.offsets, offsets_, e.count * 4ull))
+        return false;
+    count_ = e.count;
+    return true;
+}
+
+int Columns::index(uint32_t hash) const {
+    for (uint32_t i = 0; i < count_; i++)
+        if (hashes_[i] == hash) return static_cast<int>(i);
+    return -1;
+}
+
+uint32_t Columns::offset(uint32_t hash) const {
+    const int i = index(hash);
+    return i < 0 ? kAbsent : offsets_[i];
+}
+
+uint32_t Columns::width(uint32_t hash) const {
+    const uint32_t column = offset(hash);
+    if (column == kAbsent) return 0;
+    uint32_t next = UINT32_MAX;
+    for (uint32_t i = 0; i < count_; i++)
+        if (offsets_[i] > column && offsets_[i] < next) next = offsets_[i];
+    return next == UINT32_MAX ? 0 : next - column;
+}
+
+uint32_t Columns::capacity(uint32_t hash, uint32_t row_size) const { return row_size ? width(hash) / row_size : 0; }
+
+bool has_tag(const World &world, int64_t index, uint32_t hash) {
+    const Entry &e = world.entry(index);
+    if (!e.tag_count || e.tag_count > kMaxColumns) return false;
+    std::vector<uint32_t> tags(e.tag_count);
+    return world.source().copy(e.tags, tags.data(), e.tag_count * 4ull) && std::ranges::find(tags, hash) != tags.end();
+}
+
+bool copy_rows(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t rows, uint32_t row_size,
+               void *out) {
+    return chunk && offset != kAbsent && source.copy(chunk + offset, out, static_cast<size_t>(rows) * row_size);
+}
 
 int64_t archetype_of_chunk(const uint8_t *world, uint64_t chunk) {
     const uint64_t *slots = chunk_slots(world);

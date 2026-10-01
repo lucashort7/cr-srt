@@ -87,6 +87,7 @@ target_link_options(cr-probe PRIVATE -static -s)
 # where fixtures/ is.
 add_executable(crsrt-tests
   tests/main.cpp
+  tests/ecs_test.cpp
   tests/fixtures_test.cpp
   tests/memory_test.cpp
   tests/snapfile_test.cpp)

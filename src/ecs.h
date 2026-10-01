@@ -3,9 +3,91 @@
 // to it or removed, so nothing here is worth more than the call that read it. Layout constants: game.h.
 #pragma once
 
+#include "source.h"
+
 #include <cstdint>
+#include <vector>
 
 namespace crsrt::ecs {
+
+// --- Read by copy, through a Source: nothing below follows a pointer into the game, so a chunk freed mid-read fails a
+// copy instead of faulting, and a test reads a snapshot file the same way. The pointer-following readers further down
+// leave as their callers move here.
+
+// An archetype's entry as the game lays it out, 32 bytes at world + 8 + (index + kTypeEntryBias) * 32.
+struct Entry {
+    uint64_t tags = 0;     // the full type list: the columns plus the tags that carry no bytes
+    uint64_t hashes = 0;   // one type hash per column
+    uint64_t offsets = 0;  // one u32 row offset from the chunk per column
+    uint32_t tag_count = 0, count = 0;
+};
+static_assert(sizeof(Entry) == 32);
+
+// The world's chunk-slot table and the entries of the slots in use, copied on load and read from the copy after.
+class World {
+   public:
+    // Copies the slot table a block at a time up to the first block that fails, then the entries up to the highest slot
+    // holding a chunk. False, and empty, when no slot reads.
+    bool load(const mem::Source &source, uint64_t world);
+
+    const mem::Source &source() const { return *source_; }
+    uint64_t address() const { return world_; }
+    // The slots read: the highest holding a chunk, plus one.
+    int64_t slots() const { return static_cast<int64_t>(entries_.size()); }
+    // The chunk in slot `index`, 0 when none or past slots().
+    uint64_t chunk(int64_t index) const;
+    // Slot `index`'s entry; zeros past slots().
+    const Entry &entry(int64_t index) const;
+    // The slot holding `chunk`, or -1.
+    int64_t find(uint64_t chunk) const;
+
+   private:
+    const mem::Source *source_ = nullptr;
+    uint64_t world_ = 0;
+    std::vector<uint64_t> slots_;
+    std::vector<Entry> entries_;
+};
+
+// The address of slot `index`, for a caller that checks one slot without loading the table.
+uint64_t slot_address(uint64_t world, int64_t index);
+
+inline constexpr uint32_t kMaxColumns = 4096;
+inline constexpr uint32_t kAbsent = UINT32_MAX;
+
+// One archetype's columns: the hashes and offsets its entry points at, copied. An archetype's types never change; its
+// offsets do (a chunk reallocated from 10 rows to 2 moved every column), so they are worth only the read that took
+// them.
+class Columns {
+   public:
+    // Copies slot `index`'s hashes and offsets. False when either copy fails, or the count is 0 or past kMaxColumns.
+    bool read(const World &world, int64_t index);
+
+    uint32_t count() const { return count_; }
+    uint32_t hash(uint32_t i) const { return hashes_[i]; }
+    // The column of type `hash`, or -1.
+    int index(uint32_t hash) const;
+    // The column's offset from the chunk; kAbsent when the archetype lacks the type.
+    uint32_t offset(uint32_t hash) const;
+    // The column's bytes: up to the nearest column above it, its rows plus under 16 bytes of padding. 0 when absent or
+    // the last column, which nothing above bounds.
+    uint32_t width(uint32_t hash) const;
+    // The rows a chunk of this archetype holds, read off the column of type `hash` and its row size: exact while the
+    // row outweighs the padding. 0 when width() is.
+    uint32_t capacity(uint32_t hash, uint32_t row_size) const;
+
+   private:
+    uint32_t count_ = 0;
+    uint32_t hashes_[kMaxColumns] = {};
+    uint32_t offsets_[kMaxColumns] = {};
+};
+
+// True when slot `index`'s full type list holds `hash`: the test for a tag, which has no column.
+bool has_tag(const World &world, int64_t index, uint32_t hash);
+
+// Copies `rows` rows of `row_size` bytes from the column at `offset` of `chunk`.
+bool copy_rows(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t rows, uint32_t row_size, void *out);
+
+// --- The pointer-following readers, checked by mem::readable first.
 
 struct Archetype {
     int64_t index = -1;
