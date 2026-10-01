@@ -6,3 +6,4 @@ build/
 *.ini
 *.bin
 *.dump
+!tests/fixtures/*.bin

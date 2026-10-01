@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
+enable_testing()
 set(CMAKE_C_FLAGS_RELEASE "-O2")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
@@ -79,3 +80,15 @@ set_target_properties(cr-probe PROPERTIES PREFIX "")
 target_compile_options(cr-probe PRIVATE -Wall -Wextra)
 target_link_libraries(cr-probe PRIVATE crsrt-core)
 target_link_options(cr-probe PRIVATE -static -s)
+
+# The tests: an exe over crsrt-core that reads fixtures instead of the game (tests/check.h). ctest runs it from tests/,
+# where fixtures/ is.
+add_executable(crsrt-tests
+  tests/main.cpp
+  tests/fixtures_test.cpp
+  tests/memory_test.cpp)
+target_include_directories(crsrt-tests PRIVATE tests)
+target_compile_options(crsrt-tests PRIVATE -Wall -Wextra)
+target_link_libraries(crsrt-tests PRIVATE crsrt-core)
+target_link_options(crsrt-tests PRIVATE -static)
+add_test(NAME crsrt-tests COMMAND crsrt-tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
