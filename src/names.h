@@ -14,6 +14,8 @@ struct Faction {
 };
 inline constexpr uint32_t kFactionAlly = 0x538682a2;
 inline constexpr uint32_t kFactionAnomaly = 0xeae53489;
+inline constexpr uint32_t kFactionFbc = 0xdf2ac3e8;
+inline constexpr uint32_t kFactionCommanded = 0x668dce8b;
 inline constexpr Faction kFactions[] = {
     {0x4aac31a8, "hiss"},
     {0x1d82b4ed, "mold"},
@@ -21,12 +23,23 @@ inline constexpr Faction kFactions[] = {
     {0x8c4b1ad8, "neutral"},
     {0x20408545, "explosives"},
     {0x175869f5, "hedron"},
+    // What a blob spawns (2026-09-30): hostile, its own faction, no candidate hashed to it.
+    {0x9417cf1c, "spawn"},
     // The player's summons, named by us: no candidate hashed to these (2026-09-29). The first is every companion,
     // the Mold ally and the Astral Spike alike, and the kind tells which; the Volatile Anomaly has its own.
     {kFactionAlly, "ally"},
     {kFactionAnomaly, "ally"},
+    // The FBC Ranger and the quest escorts, a story ally (2026-09-29).
+    {kFactionFbc, "fbc"},
+    // An enemy taken by the Command ability (2026-09-30): the game rewrites its faction in place, kind and health
+    // kept, and what it spawns from then on is born with this one.
+    {kFactionCommanded, "cmd"},
 };
-constexpr bool is_ally(uint32_t faction) { return faction == kFactionAlly || faction == kFactionAnomaly; }
+// On the player's side now, by the hash alone: the game flips it in place, so a row can enter and leave this set.
+constexpr bool is_ally(uint32_t faction) {
+    return faction == kFactionAlly || faction == kFactionAnomaly || faction == kFactionFbc ||
+           faction == kFactionCommanded;
+}
 
 // --- Kinds. The kind at SpawnedNPC+0x30 is eight bytes, read little-endian. Where a name comes from says how far
 // to trust it.

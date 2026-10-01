@@ -30,7 +30,8 @@ inline constexpr int kMaxRows = 64;
 
 struct List {
     long calls = 0;  // the runner call that published it
-    int total = 0;   // enemies found, past kMaxRows included
+    int total = 0;   // rows found, past kMaxRows included, allies among them
+    int allies = 0;  // those of `total` whose faction is_ally
     int count = 0;   // rows filled, nearest first
     Enemy rows[kMaxRows];
 };

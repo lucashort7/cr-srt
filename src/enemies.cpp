@@ -6,6 +6,7 @@
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
+#include "names.h"
 #include "player.h"
 
 #include <windows.h>
@@ -411,6 +412,9 @@ void publish(long calls) {
     AcquireSRWLockExclusive(&g_lock);
     g_list.calls = calls;
     g_list.total = g_found_n;
+    g_list.allies = 0;
+    for (int i = 0; i < g_found_n; i++)
+        if (names::is_ally(g_found[i].faction)) g_list.allies++;
     g_list.count = std::min(g_found_n, kMaxRows);
     std::copy(g_found, g_found + g_list.count, g_list.rows);
     ReleaseSRWLockExclusive(&g_lock);

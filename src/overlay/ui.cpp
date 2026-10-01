@@ -57,8 +57,9 @@ long g_seen_calls, g_still;  // the runner's count at the last draw, and draws s
 float g_quiet;               // seconds since it last moved, up to 1
 bool g_stale_said;
 
-// [enemies] radius=30 rows=8: the panel shows the enemies within `radius` metres, at most `rows` of them.
-int g_radius = 30, g_rows = 8;
+// [enemies] radius=30 rows=8, [allies] rows=4: the panel shows the enemies within `radius` metres, at most `rows` of
+// them, and the allies within the same radius under them, at most `[allies] rows`, only while there is one.
+int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
 
 enemies::List g_list;  // the render thread's copy, one per draw
@@ -115,6 +116,8 @@ void read_ini(long frame) {
     g_radius = static_cast<int>(GetPrivateProfileIntW(L"enemies", L"radius", 30, ini.c_str()));
     g_rows = static_cast<int>(GetPrivateProfileIntW(L"enemies", L"rows", 8, ini.c_str()));
     g_rows = std::min(g_rows, enemies::kMaxRows);
+    g_ally_rows = static_cast<int>(GetPrivateProfileIntW(L"allies", L"rows", 4, ini.c_str()));
+    g_ally_rows = std::min(g_ally_rows, enemies::kMaxRows);
 }
 
 // "hiss", or the hash's first four digits.
@@ -334,8 +337,26 @@ void enemy_row(Pen &pen, const enemies::Enemy &e) {
     pen.y = bar_y + bar_h + scaled(pen, kRowGap);
 }
 
-// The count within the radius of the count loaded, the SRT's "12 of 16", then per enemy within it, nearest first, one
-// row, at most `rows` of them.
+// One side of the list: the count within the radius of the count loaded, the SRT's "12 of 16", then per row within
+// it, nearest first, at most `rows` of them. `ally` picks the side, by the faction hash the walk read on that pass.
+void side(Pen &pen, bool ally, const char *name, int total, int rows) {
+    int within = 0;
+    for (int i = 0; i < g_list.count; i++)
+        if (shown(g_list.rows[i]) && names::is_ally(g_list.rows[i].faction) == ally) within++;
+    char s[48];
+    std::snprintf(s, sizeof s, "%s: %d of %d", name, within, total);
+    line(pen, s);
+    pen.y += scaled(pen, kHeaderGap);
+    int drawn = 0;
+    for (int i = 0; i < g_list.count && drawn < rows; i++) {
+        if (!shown(g_list.rows[i]) || names::is_ally(g_list.rows[i].faction) != ally) continue;
+        enemy_row(pen, g_list.rows[i]);
+        drawn++;
+    }
+}
+
+// The enemies, then the allies under them only while the walk holds one: a commanded crowd would otherwise fill the
+// enemies' rows and their count, and most of the game has no ally at all.
 void enemy_section(Pen &pen, bool stale, long frame) {
     read_ini(frame);
     if (stale) {
@@ -343,19 +364,10 @@ void enemy_section(Pen &pen, bool stale, long frame) {
         return;
     }
     enemies::read(g_list);
-    int within = 0;
-    for (int i = 0; i < g_list.count; i++)
-        if (shown(g_list.rows[i])) within++;
-    char s[48];
-    std::snprintf(s, sizeof s, "enemies: %d of %d", within, g_list.total);
-    line(pen, s);
-    pen.y += scaled(pen, kHeaderGap);
-    int drawn = 0;
-    for (int i = 0; i < g_list.count && drawn < g_rows; i++) {
-        if (!shown(g_list.rows[i])) continue;
-        enemy_row(pen, g_list.rows[i]);
-        drawn++;
-    }
+    side(pen, false, "enemies", g_list.total - g_list.allies, g_rows);
+    if (g_list.allies == 0) return;
+    pen.y += scaled(pen, kRowGap);
+    side(pen, true, "allies", g_list.allies, g_ally_rows);
 }
 
 // The panel: the zone, the player and the enemies in one box at the drawing's place. The text goes on the draw list's

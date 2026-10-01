@@ -25,7 +25,7 @@ wrapper to draw with Dear ImGui on the game's own D3D12 device, right before eac
 | `src/hooks/present.*` | the per-frame hook that hands the swapchain to the overlay |
 | `src/overlay/swap.cpp` | getting a turn at Present: a vtable copy on the game's swapchain object |
 | `src/overlay/renderer.*` | Dear ImGui on D3D12: one command list a frame |
-| `src/overlay/ui.*` | what is drawn |
+| `src/overlay/ui.*` | what is drawn: the zone, the player, the enemies within `[enemies] radius` (at most `[enemies] rows`) and, while one is near, the allies under them (at most `[allies] rows`) |
 | `src/unload.*` | taking the DLL out of a running game without crashing it |
 | `src/memory.*`, `src/log.*` | pointer checks before every read; the log |
 
