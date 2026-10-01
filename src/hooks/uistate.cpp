@@ -2,6 +2,7 @@
 #include "hooks/uistate.h"
 
 #include "envwatch.h"
+#include "facts.h"
 #include "game.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
@@ -31,6 +32,32 @@ std::atomic<bool> g_challenge{false};
 std::atomic<float> g_challenge_elapsed{0.0f};
 std::atomic<uint32_t> g_challenge_machine{0};
 int g_challenge_logged = -1;
+std::atomic<bool> g_has_currency{false};
+std::atomic<double> g_source{0.0}, g_talent{0.0};
+int g_source_logged = -1, g_talent_logged = -1;
+
+// Source and Talent Points, two doubles of the FactDictionary (facts.h), read every kEvery calls and logged when a
+// whole number moves: a pickup, a purchase, a point earned.
+void currencies(void *ctx, LONG n) {
+    const uint8_t *tray = nullptr, *dict = nullptr;
+    double source = 0.0, talent = 0.0;
+    if (!mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) ||
+        !mem::copy(tray + game::kHudVisFactDictionary, &dict, sizeof dict) || !dict ||
+        !facts::read_double(dict, game::kFactCurrencyCash, &source) ||
+        !facts::read_double(dict, game::kFactCurrencyTalentPoints, &talent)) {
+        g_has_currency = false;
+        return;
+    }
+    g_source = source;
+    g_talent = talent;
+    g_has_currency = true;
+    const int s = static_cast<int>(source), t = static_cast<int>(talent);
+    if (s != g_source_logged || t != g_talent_logged) {
+        log::write("uistate: source %d, talent points %d (call %ld)", s, t, static_cast<long>(n));
+        g_source_logged = s;
+        g_talent_logged = t;
+    }
+}
 
 // The three bitset qwords as the log last saw them.
 uint64_t g_bits[3];
@@ -111,6 +138,7 @@ void hk_hud(void *a, void *b, void *c, void *d) {
         }
         if (n % kEvery == 1) {
             bits(c, n);
+            currencies(c, n);
             const uint8_t *tray = nullptr;
             if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray))
                 for (envwatch::Watch &w : g_hud_watch) envwatch::read(w, tray, game::kHudVisSlots, "uistate", n);
@@ -176,6 +204,13 @@ bool install_challenge(HMODULE exe, uintptr_t update_score_offset) {
 }
 
 bool paused() { return g_paused.load(); }
+
+bool currency(double *source, double *talent_points) {
+    if (!g_has_currency.load()) return false;
+    *source = g_source.load();
+    *talent_points = g_talent.load();
+    return true;
+}
 
 bool challenge(float *elapsed, uint32_t *machine) {
     *elapsed = g_challenge_elapsed.load();

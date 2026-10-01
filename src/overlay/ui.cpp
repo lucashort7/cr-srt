@@ -297,7 +297,12 @@ void player_section(Pen &pen, const player::State &p, bool stale) {
     line(pen, s);
     line(pen, "pw: -- / -- [--%] (--/--)");
     line(pen, "bp: --   as: --");
-    line(pen, "src: --   tp: --");
+    double source = 0.0, talent = 0.0;
+    if (stale || !uistate::currency(&source, &talent))
+        std::snprintf(s, sizeof s, "src: --   tp: --");
+    else
+        std::snprintf(s, sizeof s, "src: %d   tp: %d", static_cast<int>(source), static_cast<int>(talent));
+    line(pen, s);
     if (stale || !p.has_speed)
         std::snprintf(s, sizeof s, "ms: --");
     else

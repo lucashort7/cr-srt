@@ -21,6 +21,10 @@ bool install_challenge(HMODULE exe, uintptr_t update_score_offset);
 // AudioPause's flag as the last call read it: a hub screen or the pause menu is open. Any thread.
 bool paused();
 
+// Source and Talent Points as hud_visibility's last read found them in the FactDictionary (facts.h), false before
+// the first read or when the dictionary is not there. Any thread.
+bool currency(double *source, double *talent_points);
+
 // ChallengeModeInfo as the last call read it: a challenge is running, its elapsed seconds (or score) and the hash
 // that names the machine (names::kMachines). Any thread.
 bool challenge(float *elapsed, uint32_t *machine);

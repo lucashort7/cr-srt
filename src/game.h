@@ -191,6 +191,23 @@ inline constexpr uintptr_t kHudVisFactDictionary = 3 * 8;
 // UIStateStacks' bits). The map sets bits 3, 27-29 of +0x138, the inventory bits 33 and 61; the quest log and the pause
 // menu set none of them, so they name a screen's content and not the hub. Logged on change, a lead.
 inline constexpr uintptr_t kFactBits = 0x128;
+// The dictionary itself (AKTH-0113, facts.h): an open-addressed table of 0x28-byte entries at +0x78, its capacity (a
+// power of two, 0x10000 on 2026-09-30) at +0x48 and its count at +0x40; an entry's home slot is the key's low bits
+// and a collision steps one entry up. An entry: +0x8 the 64-bit key, +0x10 a u16 type (0 bool, 1 double, 2 string,
+// 3-5 float2-4, 6 empty), +0x14 a u32 fact id, +0x18 the value. The setter at exe+0x17F32C0 grounds the layout. The
+// three currencies are doubles under keys that sit 0x18 bytes before their names in the heap; the hash is not
+// FNV-1a and the keys are kept as constants, one process measured, holding across a restart unverified.
+inline constexpr uintptr_t kFactTable = 0x78;
+inline constexpr uintptr_t kFactCapacity = 0x48;
+inline constexpr uintptr_t kFactStride = 0x28;
+inline constexpr uintptr_t kFactKey = 0x8;
+inline constexpr uintptr_t kFactType = 0x10;
+inline constexpr uintptr_t kFactValue = 0x18;
+inline constexpr uint16_t kFactDouble = 1;
+inline constexpr uint16_t kFactEmpty = 6;
+inline constexpr uint64_t kFactCurrencyCash = 0x1E32CDB1862AA913;          // CURRENCY_CASH, the Source balance
+inline constexpr uint64_t kFactCurrencyTalentPoints = 0x4A29A12BB3EBC356;  // CURRENCY_TALENT_POINTS
+inline constexpr uint64_t kFactCurrencyRespec = 0x69CB479DA32F0045;        // CURRENCY_RESPEC_ITEMS, not drawn
 // The game's own pause detection, for the audio: sndencore::pause_state_detection::system(AudioPause &,
 // FixedUpdateState &), slots 0 and 1, no entity slot first (its tray, 2026-09-30). AudioPause's byte +0 is 1 while
 // any hub screen (Tab, M, C, I, J, L) or the pause menu (Esc) is open, 0 in the world: 7 of 7. FixedUpdateState+0x18
