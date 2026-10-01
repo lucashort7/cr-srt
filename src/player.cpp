@@ -154,6 +154,7 @@ struct Steps {
     int64_t get_player = 0, locate = 0, rows = 0, slowest_row = 0;
     uint32_t slowest_offset = kAbsent;
     int copies = 0;
+    int64_t direct = 0;  // the same rows again by memcpy, once each copy proved them: the syscall's share of `rows`
     Resolved resolved = kFailed;
 } g_steps;
 int64_t g_slow_said_at = -1'000'000;
@@ -163,9 +164,17 @@ bool row(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t si
     if (offset == kAbsent) return false;
     const int64_t t = clock::now_us();
     const bool ok = ecs::copy_rows(source, chunk, offset, 1, size, out);
-    const int64_t us = clock::now_us() - t;
+    const int64_t t1 = clock::now_us();
+    const int64_t us = t1 - t;
     g_steps.copies++;
     if (us > g_steps.slowest_row) g_steps.slowest_row = us, g_steps.slowest_offset = offset;
+    // A probe for the stutter card: the bytes the copy just proved readable, read again in place. Live source only.
+    if (ok && &source == &mem::live()) {
+        static uint8_t scratch[game::kLogicDataProbe];
+        std::memcpy(scratch, reinterpret_cast<const void *>(chunk + offset),
+                    size < sizeof scratch ? size : sizeof scratch);
+        g_steps.direct += clock::now_us() - t1;
+    }
     return ok;
 }
 
@@ -200,10 +209,12 @@ void read(void *world, State &out) {
     if (t2 - t0 > kSlowReadUs && t2 - g_slow_said_at > 1'000'000) {
         static const char *const kResolved[] = {"failed", "kept", "fresh"};
         log::write(
-            "player: slow read %ld us: get_player %ld, locate %ld (%s), rows %ld in %d copies, slowest +%lx %ld us",
+            "player: slow read %ld us: get_player %ld, locate %ld (%s), rows %ld in %d copies, slowest +%lx %ld us; "
+            "the same rows by memcpy %ld us",
             static_cast<long>(t2 - t0), static_cast<long>(g_steps.get_player), static_cast<long>(g_steps.locate),
             kResolved[g_steps.resolved], static_cast<long>(g_steps.rows), g_steps.copies,
-            static_cast<unsigned long>(g_steps.slowest_offset), static_cast<long>(g_steps.slowest_row));
+            static_cast<unsigned long>(g_steps.slowest_offset), static_cast<long>(g_steps.slowest_row),
+            static_cast<long>(g_steps.direct));
         g_slow_said_at = t2;
     }
 }
