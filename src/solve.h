@@ -12,6 +12,10 @@ namespace crsrt::solve {
 // get_player's exe offset, or 0 with the reason logged. *lookup gets the offset of the site that told it apart.
 uintptr_t get_player(HMODULE exe, uintptr_t *lookup);
 
+// The exe offset of the game's find-type-index function, decoded from the call rel32 kFindTypeCallAfterLookup bytes
+// past get_player's lookup site, or 0 with the reason logged.
+uintptr_t find_type(HMODULE exe, uintptr_t lookup_site);
+
 // heron::healing::regeneration_update::system's exe offset, or 0 with the reason logged.
 uintptr_t runner(HMODULE exe);
 

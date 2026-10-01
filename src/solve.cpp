@@ -3,6 +3,7 @@
 
 #include "game.h"
 #include "log.h"
+#include "memory.h"
 #include "pe.h"
 
 #include <cstring>
@@ -56,6 +57,28 @@ uintptr_t get_player(HMODULE exe, uintptr_t *lookup) {
     log::write("scan: getp_lookup exe+%lx (1 hit, %lu ms over %lu KB), prologue exe+%lx",
                static_cast<unsigned long>(*lookup), ms, static_cast<unsigned long>((hi - lo) / 1024), off(found, exe));
     return off(found, exe);
+}
+
+uintptr_t find_type(HMODULE exe, uintptr_t lookup_site) {
+    const uint8_t *lo = nullptr, *hi = nullptr;
+    if (!lookup_site || !pe::text_section(exe, &lo, &hi)) return 0;
+    const uint8_t *call = reinterpret_cast<const uint8_t *>(exe) + lookup_site + game::kFindTypeCallAfterLookup;
+    if (!mem::readable(call, 5) || call[0] != 0xe8) {
+        log::write("scan: findtype: no call rel32 at getp_lookup+%lx - not solved",
+                   static_cast<unsigned long>(game::kFindTypeCallAfterLookup));
+        return 0;
+    }
+    int32_t rel = 0;
+    std::memcpy(&rel, call + 1, 4);
+    const uint8_t *target = call + 5 + rel;
+    if (target < lo || target >= hi) {
+        log::write("scan: findtype: call target exe+%lx outside the text section - not solved",
+                   static_cast<unsigned long>(off(target, exe)));
+        return 0;
+    }
+    log::write("scan: findtype exe+%lx (call at getp_lookup+%lx)", static_cast<unsigned long>(off(target, exe)),
+               static_cast<unsigned long>(game::kFindTypeCallAfterLookup));
+    return off(target, exe);
 }
 
 // 80 systems register the same way, and the three that share the runner's prologue differ only in RIP-relative

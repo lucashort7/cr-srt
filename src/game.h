@@ -29,7 +29,10 @@ inline constexpr int64_t kArchetypeMax = 0x4000;
 inline constexpr int64_t kChunkSlotBias = 10;
 inline constexpr int64_t kTypeEntryBias = 0xc22;
 inline constexpr uintptr_t kOffsetsBase = 0x18450;
-inline constexpr uintptr_t kFindTypeIndex = 0x327F790;  // the game's own int(hashes, count, hash)
+// The game's own int(hashes, count, hash) is the call this many bytes after the get_player lookup site (game.h,
+// kGetPlayerLookup): mov rcx,[rcx+r14+8]; vzeroupper; call rel32. Decoded at boot (solve.cpp), never a fixed offset:
+// build 1.4.0 (2026-10-01) moved it from exe+0x327F790 to exe+0x32CE9B0 and the fixed one crashed the game.
+inline constexpr uintptr_t kFindTypeCallAfterLookup = 0x23;
 // The chunk slots end where the archetype entries begin: past this index a "slot" is an entry's pointer. The highest
 // slot in use was 1267 (2026-09-28).
 inline constexpr int64_t kChunkSlots = (8 + kTypeEntryBias * 32) / 8 - kChunkSlotBias;

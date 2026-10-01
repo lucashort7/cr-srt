@@ -61,6 +61,10 @@ const uint8_t *row_of(const Archetype &archetype, uint64_t chunk, uint32_t capac
 // Logs an archetype's every type hash and offset, several to a line.
 void log_types(const Archetype &archetype);
 
+// The exe offset of the game's own find-type-index function (solve::find_type), compared against type_index by
+// log_archetype; 0 skips the comparison.
+void set_find_type(uintptr_t exe_offset);
+
 // Logs an archetype's every type hash and offset, and the rows of the types game.h names. For the first runner call.
 void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row);
 

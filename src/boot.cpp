@@ -30,6 +30,7 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
         if (!o.pausedet) changed |= (o.pausedet = solve::system(exe, game::kPauseDetectName, "pausedet")) != 0;
         if (!o.challenge) changed |= (o.challenge = solve::system(exe, game::kChallengeName, "challenge")) != 0;
         if (changed) cache::save(fp, o);
+        o.find_type = solve::find_type(exe, o.get_player_lookup);
         return true;
     }
 
@@ -54,6 +55,7 @@ bool offsets_for(HMODULE exe, cache::Offsets &o) {
         return false;
     }
     cache::save(fp, o);
+    o.find_type = solve::find_type(exe, o.get_player_lookup);
     log::write("solved getplayer=%lx runner=%lx sonar=%lx - cache written", static_cast<unsigned long>(o.get_player),
                static_cast<unsigned long>(o.runner), static_cast<unsigned long>(o.sonar));
     return true;

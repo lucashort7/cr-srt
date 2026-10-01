@@ -18,10 +18,13 @@ const uint64_t *chunk_slots(const uint8_t *world) {
     return reinterpret_cast<const uint64_t *>(world + game::kChunkSlotBias * 8);
 }
 
-// The game's own lookup (exe+kFindTypeIndex), called only by the diagnostic dump to compare with type_index.
+// The game's own lookup (solve::find_type), called only by the diagnostic dump to compare with type_index.
 using FindTypeFn = int (*)(const void *hashes, uint32_t count, uint32_t hash);
+uintptr_t g_find_type = 0;
 
 }  // namespace
+
+void set_find_type(uintptr_t exe_offset) { g_find_type = exe_offset; }
 
 int64_t archetype_of_chunk(const uint8_t *world, uint64_t chunk) {
     const uint64_t *slots = chunk_slots(world);
@@ -173,8 +176,12 @@ void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row) {
                reinterpret_cast<void *>(chunk), a.hashes, a.count, a.offsets, reinterpret_cast<void *>(tag_row),
                static_cast<unsigned long>(tag_row - chunk));
     log_types(a);
+    if (!g_find_type) {
+        log::write("  the game's lookup is unresolved: no row comparison");
+        return;
+    }
     HMODULE exe = GetModuleHandleW(game::kExeName);
-    auto find = reinterpret_cast<FindTypeFn>(reinterpret_cast<uint8_t *>(exe) + game::kFindTypeIndex);
+    auto find = reinterpret_cast<FindTypeFn>(reinterpret_cast<uint8_t *>(exe) + g_find_type);
     for (const auto &t : kNamed) {
         int game_i = find(a.hashes, a.count, t.hash), mine = type_index(a, t.hash);
         if (game_i < 0) {

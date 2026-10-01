@@ -11,7 +11,8 @@ namespace crsrt::cache {
 
 struct Offsets {
     uintptr_t get_player = 0;
-    uintptr_t get_player_lookup = 0;  // where the scan found get_player's type hash; kept for the record
+    uintptr_t get_player_lookup = 0;  // where the scan found get_player's type hash; find_type is decoded from it
+    uintptr_t find_type = 0;          // derived at boot from get_player_lookup, never cached: the diagnostic lookup
     uintptr_t runner = 0;
     uintptr_t sonar = 0;      // optional: 0 when its solve failed, and cr-srt runs without the district
     uintptr_t hudvis = 0;     // optional: heron::hud_visibility::system, the state probe (AKTH-0110)
