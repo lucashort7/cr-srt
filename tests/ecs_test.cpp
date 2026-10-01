@@ -107,3 +107,23 @@ TEST(a_missing_archetype_has_no_columns) {
     CHECK(c.count() == 0);
     CHECK(c.offset(game::kHealth) == ecs::kAbsent);
 }
+
+// The damage probe's question: which archetype, chunk and row hold this Health row.
+TEST(a_row_is_located_in_its_archetype) {
+    const Loaded l;
+    static ecs::Columns c;
+    CHECK(c.read(l.world, kPairSlot));
+    const uint64_t chunk = l.world.chunk(kPairSlot);
+    const uint64_t second = chunk + c.offset(game::kHealth) + game::kHealthRowSize;
+    ecs::RowPlace place;
+    CHECK(ecs::locate_row(l.world, second, game::kHealth, game::kHealthRowSize, place));
+    CHECK(place.arch == kPairSlot);
+    CHECK(place.chunk == chunk);
+    CHECK(place.capacity == 2);
+    CHECK(place.index == 1);
+    uint32_t size = 0;
+    CHECK(ecs::row_of(c, chunk, place.capacity, place.index, game::kHealth, &size) == second);
+    CHECK(size >= game::kHealthRowSize);
+    CHECK(size < game::kHealthRowSize + 16);
+    CHECK(!ecs::locate_row(l.world, 0x1000, game::kHealth, game::kHealthRowSize, place));
+}

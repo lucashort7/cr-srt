@@ -64,6 +64,10 @@ class Columns {
 
     uint32_t count() const { return count_; }
     uint32_t hash(uint32_t i) const { return hashes_[i]; }
+    // The copied hashes, count() of them.
+    const uint32_t *hashes() const { return hashes_; }
+    // The copied offsets, count() of them.
+    const uint32_t *offsets() const { return offsets_; }
     // Column i's offset from the chunk, i below count().
     uint32_t offset_at(uint32_t i) const { return offsets_[i]; }
     // The column of type `hash`, or -1.
@@ -83,51 +87,24 @@ class Columns {
     uint32_t offsets_[kMaxColumns] = {};
 };
 
-// Slot `index`'s full type list, the columns plus the tags that carry no bytes, copied into out. False when not.
-bool type_list(const World &world, int64_t index, std::vector<uint32_t> &out);
+// The entry of slot `index` alone, copied: for a caller that needs one archetype and not the table.
+bool read_entry(const mem::Source &source, uint64_t world, int64_t index, Entry &out);
+
+// The full type list an entry points at, the columns plus the tags that carry no bytes, copied into out. False when
+// not.
+bool type_list(const mem::Source &source, const Entry &entry, std::vector<uint32_t> &out);
 
 // True when slot `index`'s full type list holds `hash`: the test for a tag, which has no column.
 bool has_tag(const World &world, int64_t index, uint32_t hash);
 
-// Copies `rows` rows of `row_size` bytes from the column at `offset` of `chunk`.
-bool copy_rows(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t rows, uint32_t row_size, void *out);
-
-// --- The pointer-following readers, checked by mem::readable first.
-
-struct Archetype {
-    int64_t index = -1;
-    const uint32_t *hashes = nullptr;   // component type hash per type index
-    const uint32_t *offsets = nullptr;  // row offset from the chunk per type index
-    uint32_t count = 0;
-};
-
-// The archetype whose chunk-table slot holds `chunk`, or -1. Reads the table a memory region at a time.
-int64_t archetype_of_chunk(const uint8_t *world, uint64_t chunk);
-
-// True when chunk-table slot `index` still holds `chunk`: a cheap check that a remembered archetype is current.
-bool chunk_is_at(const uint8_t *world, int64_t index, uint64_t chunk);
-
-// The archetype's type and offset tables, checked readable. False when either is not.
-bool archetype(const uint8_t *world, int64_t index, Archetype &out);
-
-// The type's index in the archetype, or -1.
-int type_index(const Archetype &archetype, uint32_t hash);
-
-// The archetype's full type list, the columns plus the tags that carry no bytes, checked readable. False when not.
-struct TypeList {
-    const uint32_t *hashes = nullptr;
-    uint32_t count = 0;
-};
-bool type_list(const uint8_t *world, int64_t index, TypeList &out);
-
-// True when the type is in the list: the test for a tag, which has no column.
-bool has_type(const TypeList &list, uint32_t hash);
-
 // Logs an archetype's full type list, several hashes to a line, for tools/typenames.py.
 void log_type_list(int64_t index, const uint32_t *hashes, uint32_t count);
 
+// Copies `rows` rows of `row_size` bytes from the column at `offset` of `chunk`.
+bool copy_rows(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t rows, uint32_t row_size, void *out);
+
 // Where a component row sits: its archetype, that archetype's chunk, the column's offset from the chunk, how many rows
-// the column holds (the next column's offset minus this one's, over the row size) and the row's index in it.
+// the column holds (its width over the row size) and the row's index in it.
 struct RowPlace {
     int64_t arch = -1;
     uint64_t chunk = 0;
@@ -137,22 +114,23 @@ struct RowPlace {
 };
 
 // The archetype whose `hash` column holds `row`, rows `stride` bytes apart; the nearest column below the row wins.
-// False when none does: the entity's chunk is not in the chunk table, or the walk is wrong.
-bool locate_row(const uint8_t *world, uint64_t row, uint32_t hash, uint32_t stride, RowPlace &out);
+// False when none does: the entity's chunk is not in the slot table.
+bool locate_row(const World &world, uint64_t row, uint32_t hash, uint32_t stride, RowPlace &out);
 
-// The row of type `hash` for the entity at `index` of a chunk whose columns hold `capacity` rows, and the column's
-// width over the capacity in *size (a row's size, padding included). nullptr when the type is not in the archetype.
-const uint8_t *row_of(const Archetype &archetype, uint64_t chunk, uint32_t capacity, uint32_t index, uint32_t hash,
-                      uint32_t *size);
+// The address of the row of type `hash` for the entity at `index` of a chunk whose columns hold `capacity` rows, and
+// the column's width over the capacity in *size (a row's size, padding included). 0 when the archetype lacks the type.
+uint64_t row_of(const Columns &columns, uint64_t chunk, uint32_t capacity, uint32_t index, uint32_t hash,
+                uint32_t *size);
 
 // Logs an archetype's every type hash and offset, several to a line.
-void log_types(const Archetype &archetype);
+void log_types(int64_t index, const Columns &columns);
 
-// The exe offset of the game's own find-type-index function (solve::find_type), compared against type_index by
+// The exe offset of the game's own find-type-index function (solve::find_type), compared against Columns::index by
 // log_archetype; 0 skips the comparison.
 void set_find_type(uintptr_t exe_offset);
 
-// Logs an archetype's every type hash and offset, and the rows of the types game.h names. For the first runner call.
-void log_archetype(const uint8_t *world, uint64_t chunk, uint64_t tag_row);
+// Logs the archetype of `chunk`: every type hash and offset, and the rows of the types game.h names. For the first
+// runner call, on the runner's thread: it calls the game's own lookup.
+void log_archetype(const World &world, uint64_t chunk, uint64_t tag_row);
 
 }  // namespace crsrt::ecs

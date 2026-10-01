@@ -6,6 +6,7 @@
 #include "log.h"
 #include "memory.h"
 #include "snapfile.h"
+#include "source.h"
 
 #include <windows.h>
 
@@ -71,20 +72,19 @@ void take(const uint8_t *world, long calls, const char *why) {
         std::memcpy(g_buf.data() + world_at, &world_len, 4);
     }
 
-    const auto *slots = reinterpret_cast<const uint64_t *>(world + game::kChunkSlotBias * 8);
+    // The tables through the copy-based reader; the blobs bounded by VirtualQuery, which an F9 press can afford.
+    static ecs::World w;
+    static ecs::Columns columns;
     int archs = 0, blobs = 0, capped = 0, lost = 0;
-    for (int64_t a = 0; a < game::kArchetypeMax;) {
-        int64_t end = a + static_cast<int64_t>(mem::readable_run(&slots[a]) / 8);
-        if (end == a) break;
-        end = std::min(end, game::kArchetypeMax);
-        for (; a < end; a++) {
-            ecs::Archetype arch;
-            if (!ecs::archetype(world, a, arch) || !arch.count) continue;
-            const uint64_t chunk = slots[a];
+    if (w.load(mem::live(), reinterpret_cast<uint64_t>(world))) {
+        for (int64_t a = 0; a < w.slots(); a++) {
+            if (!columns.read(w, a)) continue;
+            const uint64_t chunk = w.chunk(a);
+            const ecs::Entry &entry = w.entry(a);
             uint32_t blob = 0;
-            if (chunk && ecs::type_index(arch, game::kHealth) >= 0) {
+            if (chunk && columns.index(game::kHealth) >= 0) {
                 uint32_t last = 0;
-                for (uint32_t i = 0; i < arch.count; i++) last = std::max(arch.offsets[i], last);
+                for (uint32_t i = 0; i < columns.count(); i++) last = std::max(columns.offset_at(i), last);
                 size_t want = static_cast<size_t>(last) + kBlobSlack;
                 if (want > kBlobMax) want = kBlobMax, capped++;
                 const size_t run = mem::readable_run(reinterpret_cast<const void *>(chunk));
@@ -93,20 +93,18 @@ void take(const uint8_t *world, long calls, const char *why) {
             put(snapfile::kArchTag);
             put(static_cast<int32_t>(a));
             put(chunk);
-            put(arch.count);
+            put(columns.count());
             const size_t blob_at = g_buf.size();
             put(blob);
             put_entry(world + 8 + (a + game::kTypeEntryBias) * 32);
             put_entry(world + 8 + a * 32 + game::kOffsetsBase);
-            put(arch.hashes, arch.count * 4);
-            put(arch.offsets, arch.count * 4);
-            const uint8_t *entry = world + 8 + (a + game::kTypeEntryBias) * 32;
-            const auto *first = *reinterpret_cast<const uint8_t *const *>(entry);
-            uint32_t n = *reinterpret_cast<const uint32_t *>(entry + 0x18);
-            if (n > 4096) n = 0;
+            put(columns.hashes(), columns.count() * 4);
+            put(columns.offsets(), columns.count() * 4);
+            uint32_t n = entry.tag_count;
+            if (n > ecs::kMaxColumns) n = 0;
             const size_t n_at = g_buf.size();
             put(n);
-            if (n && !put_copy(first, n * 4)) {
+            if (n && !put_copy(reinterpret_cast<const void *>(entry.tags), n * 4)) {
                 const uint32_t none = 0;
                 std::memcpy(g_buf.data() + n_at, &none, 4);
             }

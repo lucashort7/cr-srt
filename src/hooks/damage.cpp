@@ -7,6 +7,7 @@
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
+#include "source.h"
 
 #include "MinHook.h"
 
@@ -27,6 +28,10 @@ SRWLOCK g_lock = SRWLOCK_INIT;  // hits can come from several game threads at on
 // Hits logged one line each, then only new archetypes: a damage-over-time effect calls this every frame.
 constexpr long kHitLines = 64;
 long g_hits;
+
+// Under g_lock: the slot table copied for the placing of a new row, and the columns of the archetype described.
+ecs::World g_world;
+ecs::Columns g_columns;
 
 // Rows already placed, so the chunk walk runs once per row.
 struct Memo {
@@ -97,9 +102,8 @@ void follow_row(const char *what, const uint8_t *row, uint32_t size) {
     }
 }
 
-void describe(const uint8_t *world, const ecs::RowPlace &place, uint64_t ent, int max) {
-    ecs::Archetype arch;
-    if (!ecs::archetype(world, place.arch, arch)) return;
+void describe(const ecs::RowPlace &place, uint64_t ent, int max) {
+    if (!g_columns.read(g_world, place.arch)) return;
     log::write("entity %p: arch %ld index %lu, max health %d", reinterpret_cast<void *>(ent),
                static_cast<long>(place.arch), static_cast<unsigned long>(place.index), max);
     static const struct {
@@ -114,7 +118,8 @@ void describe(const uint8_t *world, const ecs::RowPlace &place, uint64_t ent, in
     };
     for (const auto &t : kLook) {
         uint32_t size = 0;
-        const uint8_t *row = ecs::row_of(arch, place.chunk, place.capacity, place.index, t.hash, &size);
+        const auto *row = reinterpret_cast<const uint8_t *>(
+            ecs::row_of(g_columns, place.chunk, place.capacity, place.index, t.hash, &size));
         dump_row(t.name, row, size);
         if (t.hash == game::kHealthComponent) follow_row(t.name, row, size);
     }
@@ -134,7 +139,8 @@ const Memo &place_of(const uint8_t *world, uint64_t row) {
     Memo &m = g_memo[g_memo_next];
     g_memo_next = (g_memo_next + 1) % 64;
     m = {row, {}, false};
-    m.found = world && ecs::locate_row(world, row, game::kHealth, game::kHealthRowSize, m.place);
+    m.found = world && g_world.load(mem::live(), reinterpret_cast<uint64_t>(world)) &&
+              ecs::locate_row(g_world, row, game::kHealth, game::kHealthRowSize, m.place);
     return m;
 }
 
@@ -173,11 +179,10 @@ void note(float *row, const uint8_t *src, uint64_t ent, float amount, float befo
                 "(world %p)",
                 n, row, reinterpret_cast<void *>(ent), s, a, b, c, max, r, world);
     }
-    if (m.found && first_meeting(ent)) describe(world, m.place, ent, max);
+    if (m.found && first_meeting(ent)) describe(m.place, ent, max);
     if (new_arch) {
-        ecs::Archetype arch;
-        if (ecs::archetype(world, m.place.arch, arch))
-            ecs::log_types(arch);
+        if (g_columns.read(g_world, m.place.arch))
+            ecs::log_types(m.place.arch, g_columns);
         else
             log::write("arch %ld: tables unreadable", static_cast<long>(m.place.arch));
     }

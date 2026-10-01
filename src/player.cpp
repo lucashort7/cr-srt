@@ -140,7 +140,7 @@ Resolved resolve(const mem::Source &source, uint64_t world, uint64_t chunk, bool
         // The full type list once per archetype new to this process, tags included: a diff of two lists names the
         // component a cutscene or a death adds (AKTH-0110).
         std::vector<uint32_t> tags;
-        if (was.arch != index && !listed(index) && ecs::type_list(g_world, index, tags))
+        if (was.arch != index && !listed(index) && ecs::type_list(source, g_world.entry(index), tags))
             ecs::log_type_list(index, tags.data(), static_cast<uint32_t>(tags.size()));
     }
     return kFresh;
@@ -250,7 +250,8 @@ void log_first_look(void *world) {
     g_get_player(out, world);
     log::write("get_player -> %p %p %p %p", reinterpret_cast<void *>(out[0]), reinterpret_cast<void *>(out[1]),
                reinterpret_cast<void *>(out[2]), reinterpret_cast<void *>(out[3]));
-    if (out[3] & 1) ecs::log_archetype(static_cast<const uint8_t *>(world), out[1], out[0]);
+    static ecs::World w;
+    if ((out[3] & 1) && w.load(mem::live(), reinterpret_cast<uint64_t>(world))) ecs::log_archetype(w, out[1], out[0]);
 }
 
 }  // namespace crsrt::player

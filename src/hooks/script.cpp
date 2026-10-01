@@ -10,6 +10,7 @@
 #include "pe.h"
 #include "sequence.h"
 #include "solve.h"
+#include "source.h"
 
 #include "MinHook.h"
 
@@ -19,6 +20,7 @@
 #include <cstring>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 namespace crsrt::script {
 
@@ -91,11 +93,15 @@ void entity_place(const uint8_t *L, uint64_t handle, char *out, size_t cap) {
     }
     std::snprintf(out, cap, " arch %lu row %lu", static_cast<unsigned long>(arch),
                   static_cast<unsigned long>(record >> 32));
-    ecs::TypeList list;
-    if (!ecs::type_list(world, arch, list)) return;
+    ecs::Entry entry;
+    std::vector<uint32_t> list;
+    if (!ecs::read_entry(mem::live(), reinterpret_cast<uint64_t>(world), arch, entry) ||
+        !ecs::type_list(mem::live(), entry, list))
+        return;
     uint32_t sum = 2166136261u;  // FNV-1a over the list: the key's other half
-    for (uint32_t i = 0; i < list.count; i++) sum = (sum ^ list.hashes[i]) * 16777619u;
-    if (first_listing((static_cast<uint64_t>(arch) << 32) | sum)) ecs::log_type_list(arch, list.hashes, list.count);
+    for (const uint32_t h : list) sum = (sum ^ h) * 16777619u;
+    if (first_listing((static_cast<uint64_t>(arch) << 32) | sum))
+        ecs::log_type_list(arch, list.data(), static_cast<uint32_t>(list.size()));
 }
 
 volatile LONG g_inflight;
