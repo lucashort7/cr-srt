@@ -169,7 +169,7 @@ struct Pen {
     float px = 0.0f, s = 1.0f;  // the text size, and the scale from 1080
     float x = 0.0f, y = 0.0f;   // the left of the text, the top of the next line
     float right = 0.0f;
-    float dividers[2] = {};
+    float dividers[3] = {};  // zone | player | enemies | allies
     int ndividers = 0;
 };
 
@@ -190,7 +190,7 @@ void line(Pen &pen, const char *s) {
 // The end of a section: a divider under its last line, drawn with the box once the box's width is known.
 void divide(Pen &pen) {
     const float y = pen.y + scaled(pen, kDividerGap);
-    if (pen.ndividers < 2) pen.dividers[pen.ndividers++] = y;
+    if (pen.ndividers < 3) pen.dividers[pen.ndividers++] = y;
     pen.y = y + scaled(pen, kPadY);
 }
 
@@ -366,7 +366,7 @@ void enemy_section(Pen &pen, bool stale, long frame) {
     enemies::read(g_list);
     side(pen, false, "enemies", g_list.total - g_list.allies, g_rows);
     if (g_list.allies == 0) return;
-    pen.y += scaled(pen, kRowGap);
+    divide(pen);
     side(pen, true, "allies", g_list.allies, g_ally_rows);
 }
 
