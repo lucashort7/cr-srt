@@ -60,9 +60,13 @@ void read_pending_string() {
         if (buf[i] >= 0x20 && buf[i] <= 0x7e) printable++;
     // text, not the leftovers of whatever held the buffer before
     if (printable * 10 < g_pending_len * 9) return;
+    char hex[2 * 256 + 1] = {};
+    for (uint32_t i = 0; i < g_pending_len; i++)
+        std::snprintf(hex + i * 2, 3, "%02x", static_cast<unsigned char>(buf[i]));
     for (char &c : buf)
-        if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
-    log::write("transit: request string (%u, after %ld calls): \"%s\"", g_pending_len, g_pending_calls, buf);
+        if (c < 0x20 || c > 0x7e) c = '.';
+    buf[g_pending_len] = 0;
+    log::write("transit: request string (%u, after %ld calls): \"%s\" %s", g_pending_len, g_pending_calls, buf, hex);
     g_pending_chars = nullptr;
 }
 
