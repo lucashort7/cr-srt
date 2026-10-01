@@ -1,22 +1,21 @@
-// sequence.h — the sequence the player is in (AKTH-0114): a scripted level outside the open world, named by the Luau
-// call that enters it and cleared by the one that leaves. Two entry families are measured (2026-09-30):
-// return_point_save_then_switch_to_level(entity, "<path>\mq_02_taxi_puzzle_transparent", jump, fade) left through
-// clear_return_point_then_switch_to_level, and zone_transition("zone_twisted", "boss_psychic_arena") left through
-// zone_transition back to a "zone_*". save_then_switch_to_level inside one renames it (the taxi's end event). The
-// name is the level's basename; the overlay draws it as `section:`. Nothing here reads the game.
+// sequence.h — the name of the level the player is in (AKTH-0114). A Luau call that switches level names its
+// destination: zone_transition(from, to) and the *_switch_to_level family (a path, its basename kept), measured
+// 2026-09-30/10-01 on the taxi, the Gap's arena and the Oldest House. The level itself is the id at GameState+0x90
+// (transit::area), which changes a moment after the call; the name is bound to the first id that differs from the
+// one current at the call, and from then on that id is drawn by that name. An elevator ride changes the id with no
+// call, and such an id keeps its ini label or its digits. Nothing here reads the game.
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace crsrt::sequence {
 
-// The level named by an entry call, any form: a path's basename is kept, from the last '\' or '/'. Any thread.
-void enter(const char *level);
+// A level switch call named `level`, with `from` the id current at the call. Any thread.
+void enter(const char *level, uint64_t from);
 
-// The player left the sequence.
-void leave();
-
-// The current sequence's name into `out`; false when the player is in none.
-bool current(char *out, size_t cap);
+// The name bound to `id`, false when none; binds the pending name when `id` differs from its `from`. The render
+// thread, every draw.
+bool name_for(uint64_t id, char *out, size_t cap);
 
 }  // namespace crsrt::sequence

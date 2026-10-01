@@ -288,7 +288,7 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     // first digits, a zone, a building or an arena alike
     char seq[64];
     const uint64_t area = transit::area();
-    if (sequence::current(seq, sizeof seq))
+    if (sequence::name_for(area, seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
     else if (area && g_area_label[0] && area == g_area_labelled)
         std::snprintf(s, sizeof s, "section: %s", g_area_label);

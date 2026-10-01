@@ -3,6 +3,7 @@
 
 #include "ecs.h"
 #include "game.h"
+#include "hooks/transit.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
@@ -99,10 +100,9 @@ void entity_place(const uint8_t *L, uint64_t handle, char *out, size_t cap) {
 
 volatile LONG g_inflight;
 
-// What a call means for the sequence the player is in, read on every call, not only the logged ones: `enter` and
-// `rename` name the level in arg 2, `leave` ends it, `zone` is zone_transition, whose arg 2 is a "zone_*" (leaving)
-// or a sequence's level (entering).
-enum class Seq : uint8_t { none, enter, rename, leave, zone };
+// A call that names the level it switches to in arg 2, read on every call, not only the logged ones: the
+// *_switch_to_level family by a path, zone_transition(from, to) by the level's name (sequence.h).
+enum class Seq : uint8_t { none, names };
 
 struct Function {
     const char *name;
@@ -115,12 +115,12 @@ constexpr LONG kEvery = 100;
 
 Function g_functions[] = {
     {"return_point_save"},
-    {.name = "return_point_save_then_switch_to_level", .seq = Seq::enter},
+    {.name = "return_point_save_then_switch_to_level", .seq = Seq::names},
     {"clear_return_point_and_save"},
-    {.name = "clear_return_point_then_switch_to_level", .seq = Seq::leave},
-    {.name = "save_then_switch_to_level", .seq = Seq::rename},
+    {.name = "clear_return_point_then_switch_to_level", .seq = Seq::names},
+    {.name = "save_then_switch_to_level", .seq = Seq::names},
     {"player_transition"},
-    {.name = "zone_transition", .seq = Seq::zone},
+    {.name = "zone_transition", .seq = Seq::names},
     {"reload_game"},
     {"nl_game_jump_to"},
     {"nl_game_last_jump_point"},
@@ -223,21 +223,8 @@ bool arg_string(const uint8_t *L, long index, char *out, size_t cap) {
 
 void track(const Function &f, void *state) {
     char level[256];
-    switch (f.seq) {
-        case Seq::none: return;
-        case Seq::leave: sequence::leave(); return;
-        case Seq::enter:
-        case Seq::rename:
-            if (arg_string(static_cast<const uint8_t *>(state), 2, level, sizeof level)) sequence::enter(level);
-            return;
-        case Seq::zone:
-            if (!arg_string(static_cast<const uint8_t *>(state), 2, level, sizeof level)) return;
-            if (std::strncmp(level, "zone_", 5) == 0)
-                sequence::leave();
-            else
-                sequence::enter(level);
-            return;
-    }
+    if (f.seq == Seq::names && arg_string(static_cast<const uint8_t *>(state), 2, level, sizeof level))
+        sequence::enter(level, transit::area());
 }
 
 template <int I>
