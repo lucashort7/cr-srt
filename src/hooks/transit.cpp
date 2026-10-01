@@ -42,7 +42,25 @@ void read_area(void *ctx) {
 const uint8_t *g_request_text;  // the last string pointer logged, so each is logged once
 
 // The string a TransitionRequest carries, logged when its pointer changes: a probe for the fast travel destination.
+uint32_t g_pending_len;
+const char *g_pending_chars;  // a request string not yet filled when it was seen
+
+void read_pending_string() {
+    if (!g_pending_chars || g_pending_len == 0 || g_pending_len > 256) return;
+    char buf[257] = {};
+    if (!mem::copy(g_pending_chars, buf, g_pending_len)) {
+        g_pending_chars = nullptr;
+        return;
+    }
+    if (buf[0] == 0) return;
+    for (char &c : buf)
+        if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
+    log::write("transit: request string (%u): \"%s\"", g_pending_len, buf);
+    g_pending_chars = nullptr;
+}
+
 void read_request(void *ctx, long call) {
+    read_pending_string();
     const uint8_t *tray = nullptr, *env = nullptr, *req = nullptr, *text = nullptr;
     if (!(mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
           mem::copy(tray + 2 * 8, &env, sizeof env) && env && mem::copy(env, &req, sizeof req) && req &&
@@ -59,17 +77,10 @@ void read_request(void *ctx, long call) {
     char hex[sizeof raw * 2 + 1] = {};
     for (size_t i = 0; i < sizeof raw; i++) std::snprintf(hex + i * 2, 3, "%02x", raw[i]);
     log::write("transit: request +38 -> %p: %s (call %ld)", text, hex, call);
-    // {u64, u32 hash, u32, u32 flags, u32 len, const char *}: the destination's load-screen image path (2026-10-01)
-    uint32_t len = 0;
-    const char *chars = nullptr;
-    std::memcpy(&len, raw + 0x14, 4);
-    std::memcpy(&chars, raw + 0x18, 8);
-    char buf[257] = {};
-    if (chars && len < sizeof buf && mem::copy(chars, buf, len)) {
-        for (char &c : buf)
-            if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
-        log::write("transit: request string (%u): \"%s\"", len, buf);
-    }
+    // {u64, u32, u32, u32 flags, u32 len, const char *}: the destination's load-screen image path, filled a little
+    // after the request appears (2026-10-01: empty at the diff, so it is read on later calls until a byte shows)
+    std::memcpy(&g_pending_len, raw + 0x14, 4);
+    std::memcpy(&g_pending_chars, raw + 0x18, 8);
     uint8_t own[0x50] = {};
     if (mem::copy(req + 0x30, own, sizeof own)) {
         char h2[sizeof own * 2 + 1] = {};
