@@ -37,6 +37,28 @@ void read_area(void *ctx) {
         InterlockedExchange64(&g_area, static_cast<LONG64>(id));
 }
 
+const uint8_t *g_request_text;  // the last string pointer logged, so each is logged once
+
+// The string a TransitionRequest carries, logged when its pointer changes: a probe for the fast travel destination.
+void read_request(void *ctx, long call) {
+    const uint8_t *tray = nullptr, *env = nullptr, *req = nullptr, *text = nullptr;
+    if (!(mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
+          mem::copy(tray + 2 * 8, &env, sizeof env) && env && mem::copy(env, &req, sizeof req) && req &&
+          mem::copy(req + game::kTransitionRequestText, &text, sizeof text)))
+        return;
+    if (text == g_request_text) return;
+    g_request_text = text;
+    if (!text) return;
+    char buf[97] = {};
+    if (!mem::copy(text, buf, 96)) {
+        log::write("transit: request text at %p unreadable (call %ld)", text, call);
+        return;
+    }
+    for (char &c : buf)
+        if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
+    log::write("transit: request text at %p: \"%s\" (call %ld)", text, buf, call);
+}
+
 // Each env lives in one table only: TimelineCinematicsControl is uistate's (the hud_visibility tray), the
 // r::Ptr<GameState> is followed here. Slot = parameter * 8.
 envwatch::Watch g_transition[] = {
@@ -137,7 +159,10 @@ void hk(void *a, void *b, void *c, void *d) {
     System &s = g_systems[I];
     if (!lifecycle::stopping) {
         on_call(s, c);
-        if (I == 0) read_area(c);
+        if (I == 0) {
+            read_area(c);
+            read_request(c, s.calls);
+        }
     }
     s.original(a, b, c, d);
     InterlockedDecrement(&g_inflight);

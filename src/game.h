@@ -247,6 +247,10 @@ inline constexpr char kTransitionName[] =
 inline constexpr int kTransitionSlots = 11;
 // GameState's level id, {u64 id, pointer|1} at +0x90 and again at +0xa0 (AKTH-0114)
 inline constexpr uintptr_t kGameStateArea = 0x90;
+// TransitionRequest (the transition system's env slot 2): on a fast travel +0x38 gets a heap pointer and +0x40 the
+// descriptor of std::basic_string_view<char, r::CharTraitsInsensitive<char>> (measured 2026-10-01): a string, read as
+// a probe until it is named.
+inline constexpr uintptr_t kTransitionRequestText = 0x38;
 inline constexpr char kTransitionFixedName[] =
     "ecs::system::getName<void __cdecl heron::game_flow::player_transition_fixed_update::system(";
 inline constexpr int kTransitionFixedSlots = 2;
