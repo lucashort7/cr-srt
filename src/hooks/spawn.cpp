@@ -19,9 +19,66 @@ namespace {
 using SpawnFn = uint64_t (*)(void *, void *, void *, void *, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
                              uint64_t, uint64_t);
 
+// The game's own column lookup, int(hashes, count, hash): the index of a type hash in an archetype's hash array, which
+// every system calls per chunk to find a component's column. Solved at boot (solve::find_type), a leaf of 0x60 bytes
+// that starts with three plain movs.
+using FindTypeFn = int (*)(const void *hashes, uint32_t count, uint32_t hash);
+
 hooks::Hook g_submit("spawn_submit");
 hooks::Hook g_bundle("spawn_bundle");
+hooks::Hook g_find("spawn_findtype");
 SRWLOCK g_lock = SRWLOCK_INIT;
+
+// The window: from a bundle call with records to process until the next bundle call, one frame, on every thread, each
+// lookup of a hash kNamed knows is recorded by caller and hash, with the first archetype, thread and result seen: the
+// systems that resolve a Health or NPCLevel column in the frame the entity is born. Inside the bundle itself only
+// NPCLevel and one unnamed hash are looked up, both absent on the parent's archetype (build 6, 2026-10-01), so the
+// Health writer runs after it. Nothing is logged inside the lookup, which runs 5 M times a second (107 M in 20 s, the
+// frame rate unmoved); the table is written when the window closes. Which of the callers writes the row is what the
+// next build narrows (AKTH-0119).
+constexpr int kLookups = 256;
+constexpr int kFrames = 4;
+
+struct Lookup {
+    uintptr_t caller = 0;
+    const void *hashes = nullptr;
+    uint32_t hash = 0;
+    int result = 0;
+    long calls = 0;
+    DWORD thread = 0;
+    void *frames[kFrames] = {};  // the callers above the caller, the first seen
+};
+
+volatile LONG g_window = 0;  // 1 while recording
+uintptr_t g_exe = 0;
+SRWLOCK g_lookup_lock = SRWLOCK_INIT;
+Lookup g_lookups[kLookups];
+int g_lookup_n = 0;
+volatile LONG g_lookup_calls = 0;
+long g_lookup_over = 0;
+
+struct Named {
+    uint32_t hash;
+    const char *name;
+};
+constexpr Named kNamed[] = {
+    {game::kHealth, "Health"},
+    {game::kHealthLink, "HealthLink"},
+    {game::kHealthFlags, "HealthFlags"},
+    {game::kHealthComponent, "HealthComponent"},
+    {game::kDead, "Dead"},
+    {game::kRegeneration, "Regeneration"},
+    {game::kNpcLevel, "NPCLevel"},
+    {game::kFactionData, "FactionData"},
+    {game::kSpawnedNpc, "SpawnedNPC"},
+    {game::kAttachment, "Attachment"},
+};
+
+const char *name_of(uint32_t hash) {
+    for (const auto &n : kNamed)
+        if (n.hash == hash) return n.name;
+    return "";
+}
 
 // What one function's log keeps between calls. Both run often with nothing new (2026-10-01: the bundle 30 times a
 // second with 0 records, the submit 3 a second with the same two keys), so a call is logged whole only when its
@@ -200,6 +257,66 @@ uint64_t hk_submit(void *a, void *b, void *c, void *d, uint64_t s5, uint64_t s6,
     return r;
 }
 
+int hk_find(const void *hashes, uint32_t count, uint32_t hash) {
+    hooks::Call call(g_find);
+    const auto original = g_find.original<FindTypeFn>();
+    const int r = original(hashes, count, hash);
+    if (!g_window) return r;
+    InterlockedIncrement(&g_lookup_calls);
+    if (!name_of(hash)[0]) return r;
+    const auto caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+    const DWORD thread = GetCurrentThreadId();
+    AcquireSRWLockExclusive(&g_lookup_lock);
+    bool seen = false;
+    for (int i = 0; i < g_lookup_n && !seen; i++) {
+        Lookup &l = g_lookups[i];
+        if (l.caller == caller && l.hash == hash) {
+            l.calls++;
+            seen = true;
+        }
+    }
+    if (!seen && g_lookup_n == kLookups) {
+        g_lookup_over++;
+    } else if (!seen) {
+        Lookup &l = g_lookups[g_lookup_n++];
+        l = {caller, hashes, hash, r, 1, thread};
+        // frame 0 is this detour, 1 the caller already held
+        RtlCaptureStackBackTrace(2, kFrames, l.frames, nullptr);
+    }
+    ReleaseSRWLockExclusive(&g_lookup_lock);
+    return r;
+}
+
+// The table one window recorded, several lookups to a line: the caller as exe+offset, its thread, the hashes array (one
+// per archetype, so equal pointers are the same archetype), the hash with its name, the index found (-1 when the
+// archetype lacks the type) and the calls. `lookups` counts every hash, named or not.
+void log_lookups(uintptr_t exe) {
+    AcquireSRWLockExclusive(&g_lookup_lock);
+    log::write("spawn: findtype in the frame of the bundle: %ld lookups, %d named distinct%s",
+               static_cast<long>(g_lookup_calls), g_lookup_n, g_lookup_over ? " (table full, more dropped)" : "");
+    char line[640];
+    int n = 0, on_line = 0;
+    for (int i = 0; i < g_lookup_n; i++) {
+        const Lookup &l = g_lookups[i];
+        n += wsprintfA(line + n, "exe+%lx t%lu %p %s->%d x%ld <", static_cast<unsigned long>(l.caller - exe),
+                       static_cast<unsigned long>(l.thread), l.hashes, name_of(l.hash), l.result, l.calls);
+        for (void *f : l.frames) {
+            const auto at = reinterpret_cast<uintptr_t>(f);
+            if (!at) break;
+            if (at > exe && at - exe < 0x4000000)
+                n += wsprintfA(line + n, " exe+%lx", static_cast<unsigned long>(at - exe));
+            else
+                n += wsprintfA(line + n, " %p", f);
+        }
+        n += wsprintfA(line + n, " | ");
+        if (++on_line == 3 || i + 1 == g_lookup_n) {
+            log::write("  %s", line);
+            n = on_line = 0;
+        }
+    }
+    ReleaseSRWLockExclusive(&g_lookup_lock);
+}
+
 uint64_t hk_bundle(void *a, void *b, void *c, void *d, uint64_t s5, uint64_t s6, uint64_t s7, uint64_t s8, uint64_t s9,
                    uint64_t s10, uint64_t s11, uint64_t s12) {
     hooks::Call call(g_bundle);
@@ -222,6 +339,20 @@ uint64_t hk_bundle(void *a, void *b, void *c, void *d, uint64_t s5, uint64_t s6,
                 hex_of(deep_at, 0x80, deep, sizeof deep);
             }
         }
+    }
+    // the lookup window a bundle with records opened closes at the next bundle call, one frame later, and its table is
+    // logged then; a new one opens before the original so the bundle's own lookups are in it
+    if (g_find.hooked() && InterlockedExchange(&g_window, 0)) {
+        AcquireSRWLockExclusive(&g_lock);
+        log_lookups(g_exe);
+        ReleaseSRWLockExclusive(&g_lock);
+    }
+    if (count && g_find.hooked()) {
+        AcquireSRWLockExclusive(&g_lookup_lock);
+        g_lookup_n = 0, g_lookup_over = 0;
+        g_lookup_calls = 0;
+        ReleaseSRWLockExclusive(&g_lookup_lock);
+        InterlockedExchange(&g_window, 1);
     }
     call.before_original();
     const uint64_t r = original(a, b, c, d, s5, s6, s7, s8, s9, s10, s11, s12);
@@ -251,9 +382,134 @@ bool prologue_is(const uint8_t *target, const uint8_t *want, size_t n, const cha
     return true;
 }
 
+// --- The fill of a fresh entity's rows (game.h, kSpawnApply), logged when its list holds Health: the caller, the
+// range, Health's record in the type registry with its two callbacks, and the first row's source object, which is
+// what the +0x38 callback reads the row from. The original runs untouched.
+using ApplyFn = void (*)(uint32_t, const uint64_t *, uint64_t, void *);
+hooks::Hook g_apply("spawn_apply");
+// the thread inside an apply whose list holds SpawnedNPC, an enemy's: Health's copy logs only under it
+volatile LONG g_enemy_thread = 0;
+long g_apply_logged = 0;
+
+template <class T>
+bool at(uint64_t p, uintptr_t off, T &out) {
+    return mem::copy(reinterpret_cast<const void *>(p + off), &out, sizeof out);
+}
+
+uintptr_t rel(uint64_t p) { return p > g_exe && p - g_exe < 0x4000000 ? p - g_exe : 0; }
+
+// At most kPerSecond lines a second from the two logs below: an area load fills hundreds of rows in a burst.
+constexpr long kPerSecond = 40;
+volatile LONG g_second = 0, g_in_second = 0;
+
+bool budget() {
+    const auto now = static_cast<LONG>(GetTickCount() / 1000);
+    if (g_second != now) {
+        InterlockedExchange(&g_second, now);
+        InterlockedExchange(&g_in_second, 0);
+    }
+    return InterlockedIncrement(&g_in_second) <= kPerSecond;
+}
+
+void hk_apply(uint32_t chunk, const uint64_t *list, uint64_t range, void *holder) {
+    hooks::Call call(g_apply);
+    const auto original = g_apply.original<ApplyFn>();
+    if (call.stopping()) {
+        original(chunk, list, range, holder);
+        return;
+    }
+    const auto list_at = reinterpret_cast<uint64_t>(list);
+    uint64_t count = 0, entries = 0;
+    bool health = false, npc = false, level = false, faction = false;
+    if (at(list_at, 0, count) && at(list_at, 8, entries) && count < 512)
+        for (uint64_t i = 0; i < count; i++) {
+            uint64_t e = 0;
+            if (!at(entries, i * 8, e)) continue;
+            const auto h = static_cast<uint32_t>(e);
+            health = health || h == game::kHealth;
+            npc = npc || h == game::kSpawnedNpc;
+            level = level || h == game::kNpcLevel;
+            faction = faction || h == game::kFactionData;
+        }
+    if (!health && !npc && !level) {
+        original(chunk, list, range, holder);
+        return;
+    }
+    const auto caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+    const auto tid = static_cast<LONG>(GetCurrentThreadId());
+    const auto row0 = static_cast<uint32_t>(range), rows = static_cast<uint32_t>(range >> 32);
+    call.before_original();
+    // the copy logs under the mark, and its lines come before this one on the same thread
+    if (health) InterlockedExchange(&g_enemy_thread, tid);
+    original(chunk, list, range, holder);
+    if (health) InterlockedExchange(&g_enemy_thread, 0);
+    if (!budget()) return;
+    AcquireSRWLockExclusive(&g_lock);
+    g_apply_logged++;
+    log::write("spawn: apply t%lu from exe+%lx holder %p chunk %lu rows %lu+%lu, %lu types:%s%s%s%s",
+               static_cast<unsigned long>(tid), static_cast<unsigned long>(rel(caller)), holder,
+               static_cast<unsigned long>(chunk), static_cast<unsigned long>(row0), static_cast<unsigned long>(rows),
+               static_cast<unsigned long>(count), health ? " Health" : "", npc ? " SpawnedNPC" : "",
+               level ? " NPCLevel" : "", faction ? " FactionData" : "");
+    ReleaseSRWLockExclusive(&g_lock);
+}
+
+// --- Health's own callbacks (game.h, kHealthConstruct and kHealthFromSource): every fresh Health row goes through
+// one of them. The copy is logged with its source's 64 bytes, the first four as float, int, float, int, and the
+// caller; the zeroing only counted. Rows whose source max is 1 or less (the 1/1 attachments, props) are counted, not
+// logged, so the kCopyMax logged are the ones with a health worth reading.
+using ConstructFn = void (*)(void *, uint32_t);
+using FromSourceFn = void (*)(const void *, void *, uint32_t);
+hooks::Hook g_construct("health_construct");
+hooks::Hook g_copy("health_copy");
+volatile LONG g_construct_calls = 0, g_copy_calls = 0, g_copy_small = 0;
+long g_copy_logged = 0;
+
+void hk_construct(void *column, uint32_t row) {
+    hooks::Call call(g_construct);
+    InterlockedIncrement(&g_construct_calls);
+    g_construct.original<ConstructFn>()(column, row);
+}
+
+void hk_copy(const void *source, void *column, uint32_t row) {
+    hooks::Call call(g_copy);
+    const auto original = g_copy.original<FromSourceFn>();
+    if (call.stopping()) {
+        original(source, column, row);
+        return;
+    }
+    const auto caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+    uint8_t src[game::kHealthSourceSize] = {};
+    const bool read = mem::copy(source, src, sizeof src);
+    int32_t max = 0;
+    float fraction = 0;
+    int32_t i2 = 0, i3 = 0;
+    std::memcpy(&fraction, src, 4), std::memcpy(&max, src + 4, 4), std::memcpy(&i2, src + 8, 4),
+        std::memcpy(&i3, src + 12, 4);
+    InterlockedIncrement(&g_copy_calls);
+    call.before_original();
+    original(source, column, row);
+    if (!read || max <= 1) InterlockedIncrement(&g_copy_small);
+    const auto tid = static_cast<LONG>(GetCurrentThreadId());
+    if (!read || max <= 1 || g_enemy_thread != tid || !budget()) return;
+    char hex[game::kHealthSourceSize * 3 + 8] = "", own[96] = "-";
+    hex_of(src, sizeof src, hex, sizeof hex);
+    mem::owner_of(source, own, sizeof own);
+    AcquireSRWLockExclusive(&g_lock);
+    g_copy_logged++;
+    log::write(
+        "health: copy %ld t%lu from exe+%lx: source %p (%s) -> %p row %lu | fraction %d/1000 max %ld +8 %ld +c "
+        "%ld | %s",
+        g_copy_logged, static_cast<unsigned long>(tid), static_cast<unsigned long>(rel(caller)), source, own, column,
+        static_cast<unsigned long>(row), static_cast<int>(fraction * 1000), static_cast<long>(max),
+        static_cast<long>(i2), static_cast<long>(i3), hex);
+    ReleaseSRWLockExclusive(&g_lock);
+}
+
 }  // namespace
 
-bool install(HMODULE exe) {
+bool install(HMODULE exe, uintptr_t find_type) {
+    g_exe = reinterpret_cast<uintptr_t>(exe);
     auto *submit = reinterpret_cast<uint8_t *>(exe) + game::kSpawnSubmit;
     auto *bundle = reinterpret_cast<uint8_t *>(exe) + game::kSpawnBundle;
     bool any = false;
@@ -261,6 +517,20 @@ bool install(HMODULE exe) {
         any = g_submit.install(submit, reinterpret_cast<void *>(&hk_submit)) || any;
     if (prologue_is(bundle, game::kSpawnBundlePrologue, sizeof game::kSpawnBundlePrologue, "bundle"))
         any = g_bundle.install(bundle, reinterpret_cast<void *>(&hk_bundle)) || any;
+    auto *apply = reinterpret_cast<uint8_t *>(exe) + game::kSpawnApply;
+    if (prologue_is(apply, game::kSpawnApplyPrologue, sizeof game::kSpawnApplyPrologue, "apply"))
+        any = g_apply.install(apply, reinterpret_cast<void *>(&hk_apply)) || any;
+    auto *construct = reinterpret_cast<uint8_t *>(exe) + game::kHealthConstruct;
+    if (prologue_is(construct, game::kHealthConstructPrologue, sizeof game::kHealthConstructPrologue, "construct"))
+        any = g_construct.install(construct, reinterpret_cast<void *>(&hk_construct)) || any;
+    auto *copy = reinterpret_cast<uint8_t *>(exe) + game::kHealthFromSource;
+    if (prologue_is(copy, game::kHealthFromSourcePrologue, sizeof game::kHealthFromSourcePrologue, "copy"))
+        any = g_copy.install(copy, reinterpret_cast<void *>(&hk_copy)) || any;
+    // the lookup only with the bundle, whose window is the only thing it records in
+    if (find_type && g_bundle.hooked())
+        any = g_find.install(exe, find_type, reinterpret_cast<void *>(&hk_find)) || any;
+    else
+        log::write("spawn: findtype %s - lookups not recorded", find_type ? "without the bundle" : "unsolved");
     return any;
 }
 

@@ -70,6 +70,28 @@ inline constexpr uint8_t kSpawnBundlePrologue[] = {
     0x48, 0x89, 0x48, 0x08, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41,
     0x57, 0x48, 0x8d, 0xa8, 0x88, 0xfe, 0xff, 0xff, 0x48, 0x81, 0xec, 0x38, 0x02, 0x00, 0x00};
 inline constexpr uint32_t kSpawnRecordSize = 0x90;
+// The function that fills a fresh entity's rows, found by the lookups it makes in the frame of a bundle with records
+// (build 9 of the probe, 2026-10-01): apply(chunk index, list, range, holder), the list {u64 count, u64 *entries} of
+// type hashes in the low dword, the range's low dword the first row and high dword the count past it. Per type it
+// finds the column (find_type) and the type's record in the registry at world+0x10 ({sorted u32 hashes, count,
+// records of 0x58}, binary search), and per row calls the record's +0x38 with (a per-entity source, the column, the
+// row's global index) when the entity has a source, else the record's +0x30 with the column.
+inline constexpr uintptr_t kSpawnApply = 0x1d7e5b0;
+inline constexpr uint8_t kSpawnApplyPrologue[] = {0x4c, 0x89, 0x44, 0x24, 0x18, 0x53, 0x55, 0x56, 0x57, 0x41, 0x54,
+                                                  0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x58};
+inline constexpr uintptr_t kTypeRegistry = 0x10;  // from the world
+inline constexpr uint32_t kTypeRecordSize = 0x58;
+inline constexpr uintptr_t kTypeConstruct = 0x30;   // the record's callback for a row without a source
+inline constexpr uintptr_t kTypeFromSource = 0x38;  // with one
+// Health's two (build 11, 2026-10-01; the record's +0 names heron::health::component::Health): construct(column, row)
+// zeroes 64 bytes at column + row * 0x40, from_source(source, column, row) copies 64 bytes from the source there. The
+// row here is 0x40 wide, the registry record's +0x10; kHealthRowSize is the world chunk's stride.
+inline constexpr uintptr_t kHealthConstruct = 0x1dd6a90;
+inline constexpr uint8_t kHealthConstructPrologue[] = {0xc5, 0xf9, 0xef, 0xc0, 0x8b, 0xc2, 0x48, 0xc1, 0xe0, 0x06};
+inline constexpr uintptr_t kHealthFromSource = 0x1dd6ab0;
+inline constexpr uint8_t kHealthFromSourcePrologue[] = {0xc5, 0xfc, 0x10, 0x01, 0x41, 0x8b,
+                                                        0xc0, 0x48, 0xc1, 0xe0, 0x06};
+inline constexpr uint32_t kHealthSourceSize = 0x40;
 
 // --- Component type hashes.
 // The immediate inside get_player: heron::resourcing::component::ResourcingData, the player's Power and Command
