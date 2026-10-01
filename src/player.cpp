@@ -1,6 +1,7 @@
 // player.cpp
 #include "player.h"
 
+#include "clock.h"
 #include "ecs.h"
 #include "game.h"
 #include "log.h"
@@ -146,9 +147,26 @@ Resolved resolve(const mem::Source &source, uint64_t world, uint64_t chunk, bool
     return kFresh;
 }
 
-// Row `offset` of the chunk, `size` bytes, into out; false when the archetype lacks it or the copy fails.
+// Where one read's time went, for the stutter card's per-step timer: a read past kSlowReadUs logs it, at most once a
+// second. Runner thread only.
+constexpr int64_t kSlowReadUs = 1000;
+struct Steps {
+    int64_t get_player = 0, locate = 0, rows = 0, slowest_row = 0;
+    uint32_t slowest_offset = kAbsent;
+    int copies = 0;
+    Resolved resolved = kFailed;
+} g_steps;
+int64_t g_slow_said_at = -1'000'000;
+
+// Row `offset` of the chunk, `size` bytes, into out; false when the archetype lacks it or the copy fails. Timed.
 bool row(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t size, void *out) {
-    return offset != kAbsent && ecs::copy_rows(source, chunk, offset, 1, size, out);
+    if (offset == kAbsent) return false;
+    const int64_t t = clock::now_us();
+    const bool ok = ecs::copy_rows(source, chunk, offset, 1, size, out);
+    const int64_t us = clock::now_us() - t;
+    g_steps.copies++;
+    if (us > g_steps.slowest_row) g_steps.slowest_row = us, g_steps.slowest_offset = offset;
+    return ok;
 }
 
 // The memo resolved for the chunk, and its Health row copied into health. A kept memo whose row does not copy is wrong:
@@ -157,6 +175,7 @@ bool locate(const mem::Source &source, uint64_t world, uint64_t chunk, uint8_t *
     Resolved r = resolve(source, world, chunk, false);
     if (r == kKept && !row(source, chunk, g_memo.health, game::kHealthRowSize, health))
         r = resolve(source, world, chunk, true);
+    g_steps.resolved = r;
     return r != kFailed && row(source, chunk, g_memo.health, game::kHealthRowSize, health);
 }
 
@@ -167,18 +186,40 @@ bool on_map(float v) { return std::isfinite(v) && std::fabs(v) < kMapBound; }
 void set_get_player(GetPlayerFn fn) { g_get_player = fn; }
 
 void read(void *world, State &out) {
+    g_steps = {};
+    const int64_t t0 = clock::now_us();
     const uint64_t chunk = player_chunk(world);
+    const int64_t t1 = clock::now_us();
+    g_steps.get_player = t1 - t0;
     if (!chunk) {
         out = {};
-        return;
+    } else {
+        read_chunk(mem::live(), reinterpret_cast<uint64_t>(world), chunk, out);
     }
-    read_chunk(mem::live(), reinterpret_cast<uint64_t>(world), chunk, out);
+    const int64_t t2 = clock::now_us();
+    if (t2 - t0 > kSlowReadUs && t2 - g_slow_said_at > 1'000'000) {
+        static const char *const kResolved[] = {"failed", "kept", "fresh"};
+        log::write(
+            "player: slow read %ld us: get_player %ld, locate %ld (%s), rows %ld in %d copies, slowest +%lx %ld us",
+            static_cast<long>(t2 - t0), static_cast<long>(g_steps.get_player), static_cast<long>(g_steps.locate),
+            kResolved[g_steps.resolved], static_cast<long>(g_steps.rows), g_steps.copies,
+            static_cast<unsigned long>(g_steps.slowest_offset), static_cast<long>(g_steps.slowest_row));
+        g_slow_said_at = t2;
+    }
 }
 
 void read_chunk(const mem::Source &source, uint64_t world, uint64_t chunk, State &out) {
     out = {};
     uint8_t health[game::kHealthRowSize];
-    if (!world || !chunk || !locate(source, world, chunk, health)) return;
+    const int64_t t0 = clock::now_us();
+    const bool located = world && chunk && locate(source, world, chunk, health);
+    const int64_t t1 = clock::now_us();
+    g_steps.locate = t1 - t0;
+    if (!located) return;
+    struct RowsTimer {
+        int64_t from;
+        ~RowsTimer() { g_steps.rows = clock::now_us() - from; }
+    } const timer{t1};
     out.arch = g_memo.arch;
     out.dead = g_memo.dead;
     out.health_at = chunk + g_memo.health;
