@@ -64,6 +64,7 @@ add_library(cr-srt SHARED
   src/hooks/present.cpp
   src/hooks/script.cpp
   src/hooks/sonar.cpp
+  src/hooks/spawn.cpp
   src/hooks/transit.cpp
   src/hooks/uistate.cpp
   src/facts.cpp

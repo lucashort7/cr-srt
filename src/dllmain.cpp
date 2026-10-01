@@ -13,6 +13,7 @@
 #include "hooks/runner.h"
 #include "hooks/script.h"
 #include "hooks/sonar.h"
+#include "hooks/spawn.h"
 #include "hooks/transit.h"
 #include "hooks/uistate.h"
 #include "lifecycle.h"
@@ -60,6 +61,9 @@ DWORD WINAPI boot_main(LPVOID) {
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             damage::install(exe);
     }
+    // the spawn probe reads nothing of the runner's: its two functions are checked by prologue, not solved
+    if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"spawn", 1, log::path(L".ini").c_str()))
+        spawn::install(exe);
     // The walk thread, runner or not: it walks only what the runner publishes and idles without it, and it is where the
     // ini's [areas] is read and written for whereabouts, which the overlay draws whatever hooked.
     if (!lifecycle::stopping) enemies::start();
