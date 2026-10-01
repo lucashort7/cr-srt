@@ -115,11 +115,19 @@ uint32_t Columns::width(uint32_t hash) const {
 
 uint32_t Columns::capacity(uint32_t hash, uint32_t row_size) const { return row_size ? width(hash) / row_size : 0; }
 
-bool has_tag(const World &world, int64_t index, uint32_t hash) {
+bool type_list(const World &world, int64_t index, std::vector<uint32_t> &out) {
     const Entry &e = world.entry(index);
+    out.clear();
     if (!e.tag_count || e.tag_count > kMaxColumns) return false;
-    std::vector<uint32_t> tags(e.tag_count);
-    return world.source().copy(e.tags, tags.data(), e.tag_count * 4ull) && std::ranges::find(tags, hash) != tags.end();
+    out.resize(e.tag_count);
+    if (world.source().copy(e.tags, out.data(), e.tag_count * 4ull)) return true;
+    out.clear();
+    return false;
+}
+
+bool has_tag(const World &world, int64_t index, uint32_t hash) {
+    std::vector<uint32_t> tags;
+    return type_list(world, index, tags) && std::ranges::find(tags, hash) != tags.end();
 }
 
 bool copy_rows(const mem::Source &source, uint64_t chunk, uint32_t offset, uint32_t rows, uint32_t row_size,
@@ -178,12 +186,12 @@ bool has_type(const TypeList &list, uint32_t hash) {
     return false;
 }
 
-void log_type_list(int64_t index, const TypeList &list) {
+void log_type_list(int64_t index, const uint32_t *hashes, uint32_t count) {
     char line[480];
     int n = 0;
-    for (uint32_t i = 0; i < list.count; i++) {
-        n += wsprintfA(line + n, "%08lx ", static_cast<unsigned long>(list.hashes[i]));
-        if (n > 440 || i + 1 == list.count) {
+    for (uint32_t i = 0; i < count; i++) {
+        n += wsprintfA(line + n, "%08lx ", static_cast<unsigned long>(hashes[i]));
+        if (n > 440 || i + 1 == count) {
             log::write("arch %ld tags: %s", static_cast<long>(index), line);
             n = 0;
         }

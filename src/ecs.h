@@ -83,6 +83,9 @@ class Columns {
     uint32_t offsets_[kMaxColumns] = {};
 };
 
+// Slot `index`'s full type list, the columns plus the tags that carry no bytes, copied into out. False when not.
+bool type_list(const World &world, int64_t index, std::vector<uint32_t> &out);
+
 // True when slot `index`'s full type list holds `hash`: the test for a tag, which has no column.
 bool has_tag(const World &world, int64_t index, uint32_t hash);
 
@@ -121,7 +124,7 @@ bool type_list(const uint8_t *world, int64_t index, TypeList &out);
 bool has_type(const TypeList &list, uint32_t hash);
 
 // Logs an archetype's full type list, several hashes to a line, for tools/typenames.py.
-void log_type_list(int64_t index, const TypeList &list);
+void log_type_list(int64_t index, const uint32_t *hashes, uint32_t count);
 
 // Where a component row sits: its archetype, that archetype's chunk, the column's offset from the chunk, how many rows
 // the column holds (the next column's offset minus this one's, over the row size) and the row's index in it.

@@ -91,6 +91,7 @@ add_executable(crsrt-tests
   tests/enemies_test.cpp
   tests/fixtures_test.cpp
   tests/memory_test.cpp
+  tests/player_test.cpp
   tests/snapfile_test.cpp)
 target_include_directories(crsrt-tests PRIVATE tests)
 target_compile_options(crsrt-tests PRIVATE -Wall -Wextra)

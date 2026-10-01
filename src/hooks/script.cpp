@@ -95,7 +95,7 @@ void entity_place(const uint8_t *L, uint64_t handle, char *out, size_t cap) {
     if (!ecs::type_list(world, arch, list)) return;
     uint32_t sum = 2166136261u;  // FNV-1a over the list: the key's other half
     for (uint32_t i = 0; i < list.count; i++) sum = (sum ^ list.hashes[i]) * 16777619u;
-    if (first_listing((static_cast<uint64_t>(arch) << 32) | sum)) ecs::log_type_list(arch, list);
+    if (first_listing((static_cast<uint64_t>(arch) << 32) | sum)) ecs::log_type_list(arch, list.hashes, list.count);
 }
 
 volatile LONG g_inflight;

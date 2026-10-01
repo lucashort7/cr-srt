@@ -1,6 +1,8 @@
 // player.h — the player's entity, through the game's own get_player, and its rows: Health, the transform, Movement.
 #pragma once
 
+#include "source.h"
+
 #include <cstdint>
 
 namespace crsrt::player {
@@ -45,14 +47,13 @@ struct State {
     uint64_t health_at = 0, position_at = 0, speed_at = 0, velocity_at = 0;
 };
 
-// The player's Health, position, speed and velocity: row 0 of the chunk get_player names. has_health false leaves every
-// flag false. Cheap enough for every runner call: a repeat chunk skips the archetype scan, and one VirtualQuery covers
-// the four rows. Runner thread only.
+// The player's rows: row 0 of the chunk get_player names. has_health false leaves every flag false. Cheap enough for
+// every runner call: a repeat chunk skips the slot table, and each row is one copy. Runner thread only.
 void read(void *world, State &out);
 
-// The player's Health row (+0 the fraction of max as a float, +4 max health in points as an int), or nullptr when
-// anything on the way is unreadable. Shares read's resolution. Runner thread only.
-const float *health_row(void *world, int64_t *arch_out, uint64_t *chunk_out);
+// read() for a chunk already known, through any source: what read() does after get_player, and what the tests run over
+// a snapshot. Runner thread only, or a thread that is not the runner's while the runner is not hooked.
+void read_chunk(const mem::Source &source, uint64_t world, uint64_t chunk, State &out);
 
 // get_player's answer and the player's whole archetype, to the log. Once, on the first runner call.
 void log_first_look(void *world);
