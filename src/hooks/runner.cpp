@@ -1,6 +1,7 @@
 // runner.cpp
 #include "hooks/runner.h"
 
+#include "clock.h"
 #include "envwatch.h"
 #include "game.h"
 #include "lifecycle.h"
@@ -50,17 +51,7 @@ void meter(Phase p, int64_t us, LONG call) {
     m.sum_us += us;
     if (us > m.max_us) m.max_us = us, m.max_call = call;
 }
-const int64_t g_qpc_hz = [] {
-    LARGE_INTEGER f;
-    QueryPerformanceFrequency(&f);
-    return f.QuadPart;
-}();
-
-int64_t now_us() {
-    LARGE_INTEGER t;
-    QueryPerformanceCounter(&t);
-    return t.QuadPart * 1000000 / g_qpc_hz;
-}
+using clock::now_us;
 
 bool same(const player::State &a, const player::State &b) {
     return a.has_health == b.has_health && a.has_position == b.has_position && a.has_speed == b.has_speed &&

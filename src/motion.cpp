@@ -1,6 +1,7 @@
 // motion.cpp
 #include "motion.h"
 
+#include "clock.h"
 #include "log.h"
 
 #include <windows.h>
@@ -53,17 +54,7 @@ struct Peaks {
     float up_min = 2, up[3] = {};  // the most tilted up axis of the window, by its world Y
 } g_peaks;
 
-const int64_t g_qpc_hz = [] {
-    LARGE_INTEGER f;
-    QueryPerformanceFrequency(&f);
-    return f.QuadPart;
-}();
-
-int64_t now_us() {
-    LARGE_INTEGER t;
-    QueryPerformanceCounter(&t);
-    return t.QuadPart * 1000000 / g_qpc_hz;
-}
+using clock::now_us;
 
 void restart() {
     g_held = g_head = 0;

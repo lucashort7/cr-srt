@@ -3,6 +3,7 @@
 #define WIDL_EXPLICIT_AGGREGATE_RETURNS  // MinGW's d3d12.h: struct returns (the heap-start handles) by the MSVC ABI
 #include "overlay/renderer.h"
 
+#include "clock.h"
 #include "log.h"
 #include "overlay/ui.h"
 
@@ -68,11 +69,7 @@ struct Cost {
 long g_cost_frames;
 constexpr long kCostEvery = 600;
 
-int64_t now_us() {
-    LARGE_INTEGER t;
-    QueryPerformanceCounter(&t);
-    return t.QuadPart * 1000000 / g_qpf.QuadPart;
-}
+using clock::now_us;
 
 bool ok(HRESULT hr, const char *what) {
     if (SUCCEEDED(hr)) return true;
@@ -239,6 +236,7 @@ void frame(IDXGISwapChain *swapchain) {
         g_fence->SetEventOnCompletion(g_fence_at[f], g_fence_event);
         WaitForSingleObject(g_fence_event, 100);
         if (g_fence->GetCompletedValue() < g_fence_at[f]) {
+            g_wait_cost.add(now_us() - t_wait);  // the timeout is a wait too: the meter's max shows it
             if (g_skipped++ % 600 == 0)
                 log::write("overlay: allocator %u still busy after 100 ms, frame skipped (%ld so far)", f, g_skipped);
             return;

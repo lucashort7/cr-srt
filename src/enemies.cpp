@@ -1,6 +1,7 @@
 // enemies.cpp
 #include "enemies.h"
 
+#include "clock.h"
 #include "ecs.h"
 #include "game.h"
 #include "hooks/runner.h"
@@ -94,17 +95,18 @@ Shield g_shields[kMaxFound];
 
 // What one walk did. Classifications: a slot never seen, an entry now pointing at other hashes, a failed copy tried
 // again. Failed copies: an archetype's columns (its hashes and offsets), its chunk's rows. Rejected: rows with an
-// entity handle whose Health did not read as alive (a fraction outside (0, 1], a max of 0): a dead row, or one torn by
-// the game writing it while this thread read, since the walk no longer runs inside a system call.
+// entity handle whose Health did not read as alive (a fraction outside (0, 1], a max of 0); `again`, those rejected on
+// the walk before too, which stay dead; the rest flipped between two walks: dying, or torn by the game writing the row
+// while this thread read it, since the walk no longer runs inside a system call.
 struct Count {
     int fresh = 0, changed = 0, retried = 0, chunks = 0, unbounded = 0;
-    int lost_columns = 0, lost_rows = 0, rejected = 0;
+    int lost_columns = 0, lost_rows = 0, rejected = 0, again = 0;
     int64_t combat_us = 0, slots_us = 0;  // where the walk's time went: the CombatStatus probe, the slot loop
     uint64_t cycles = 0;                  // the CPU cycles this thread spent in it: wall time minus time off the CPU
 
     void add(const Count &o) {
         fresh += o.fresh, changed += o.changed, retried += o.retried, chunks += o.chunks, unbounded += o.unbounded;
-        lost_columns += o.lost_columns, lost_rows += o.lost_rows, rejected += o.rejected;
+        lost_columns += o.lost_columns, lost_rows += o.lost_rows, rejected += o.rejected, again += o.again;
     }
 } g_walk;
 
@@ -125,17 +127,7 @@ uint64_t g_kinds_seen[kKindsLogged];  // every kind logged once, on its first si
 int g_kinds_seen_n;
 int64_t g_combat_logged_at = -kListGapUs;
 
-const int64_t g_qpc_hz = [] {
-    LARGE_INTEGER f;
-    QueryPerformanceFrequency(&f);
-    return f.QuadPart;
-}();
-
-int64_t now_us() {
-    LARGE_INTEGER t;
-    QueryPerformanceCounter(&t);
-    return t.QuadPart * 1000000 / g_qpc_hz;
-}
+using clock::now_us;
 
 SRWLOCK g_lock = SRWLOCK_INIT;
 List g_list;
@@ -212,7 +204,22 @@ bool copy_column(uint64_t chunk, int16_t index, uint32_t capacity, uint32_t size
     return false;
 }
 
-bool alive(float fraction, int32_t max) { return std::isfinite(fraction) && fraction > 0.0f && max > 0; }
+// The handles rejected on this walk and on the one before, the older sorted: g_rejects[g_rejects_now] fills.
+uint64_t g_rejects[2][kMaxFound];
+int g_rejects_n[2], g_rejects_now;
+
+void reject(uint64_t handle) {
+    g_walk.rejected++;
+    const int before = g_rejects_now ^ 1;
+    if (std::binary_search(g_rejects[before], g_rejects[before] + g_rejects_n[before], handle)) g_walk.again++;
+    if (g_rejects_n[g_rejects_now] < kMaxFound) g_rejects[g_rejects_now][g_rejects_n[g_rejects_now]++] = handle;
+}
+
+// A live row: a fraction in (0, 1] of a positive max. A torn row reads as anything; the bound at 1 catches the ones
+// that read high.
+bool alive(float fraction, int32_t max) {
+    return std::isfinite(fraction) && fraction > 0.0f && fraction <= 1.0f && max > 0;
+}
 
 void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
     if (!copy_column(chunk, c.spawned, capacity, game::kSpawnedNpcRowSize, g_spawned) ||
@@ -226,7 +233,7 @@ void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
         const auto max = at<int32_t>(health + 4);
         if (!g_handles[r]) continue;
         if (!alive(fraction, max)) {
-            g_walk.rejected++;
+            reject(g_handles[r]);
             continue;
         }
         Enemy &e = g_found[g_found_n++];
@@ -278,7 +285,7 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
         const auto max = at<int32_t>(health + 4);
         if (!g_handles[r]) continue;
         if (!alive(fraction, max)) {
-            g_walk.rejected++;
+            reject(g_handles[r]);
             continue;
         }
         Linked &l = g_linked[g_linked_n++];
@@ -336,6 +343,8 @@ void walk(const player::State &s, long calls, int64_t now) {
         g_class_world = g_world.address();
     }
     g_found_n = g_shields_n = 0;
+    g_rejects_now ^= 1;
+    g_rejects_n[g_rejects_now] = 0;
     const int64_t t0 = now_us();
     probe_combat(s, calls, now);
     const int64_t t1 = now_us();
@@ -372,6 +381,7 @@ void walk(const player::State &s, long calls, int64_t now) {
     }
 
     g_walk.slots_us = now_us() - t1;
+    std::sort(g_rejects[g_rejects_now], g_rejects[g_rejects_now] + g_rejects_n[g_rejects_now]);
     for (int i = 0; i < g_found_n; i++) {
         Enemy &e = g_found[i];
         const uint64_t handle = e.id | static_cast<uint64_t>(e.generation) << 32;
@@ -547,24 +557,27 @@ void log_period() {
         static_cast<unsigned long>(g_interval_ms), g_found_n, g_shields_n);
     log::write(
         "  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows "
-        "rejected; %d Health columns unbounded",
-        t.fresh, t.changed, t.retried, t.chunks, t.lost_columns, t.lost_rows, t.rejected, t.unbounded);
+        "rejected, %d of them on the walk before too; %d Health columns unbounded",
+        t.fresh, t.changed, t.retried, t.chunks, t.lost_columns, t.lost_rows, t.rejected, t.again, t.unbounded);
     // The slowest walk's cycles as microseconds at the period's rate: far under its wall time = off the CPU.
     const long on_cpu = g_period.sum_cycles
                             ? static_cast<long>(m.cycles * static_cast<uint64_t>(g_period.sum_us) / g_period.sum_cycles)
                             : -1;
     log::write(
         "  the slowest walk: combat probe %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, "
-        "%d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows rejected",
+        "%d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows rejected, %d on the "
+        "walk before too",
         static_cast<long>(m.combat_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed, m.retried, m.chunks,
-        m.lost_columns, m.lost_rows, m.rejected);
+        m.lost_columns, m.lost_rows, m.rejected, m.again);
     g_period = {};
 }
 
 // [enemies] interval_ms, re-read once a second as the panel re-reads radius, clamped to [10, 10000].
+// GetPrivateProfileInt reads a value that is not a number as 0, which is no interval: the default, not the floor.
 void read_ini() {
     static const std::wstring ini = log::path(L".ini");
-    const UINT v = GetPrivateProfileIntW(L"enemies", L"interval_ms", kIntervalDefaultMs, ini.c_str());
+    UINT v = GetPrivateProfileIntW(L"enemies", L"interval_ms", kIntervalDefaultMs, ini.c_str());
+    if (v == 0) v = kIntervalDefaultMs;
     const DWORD was = g_interval_ms;
     g_interval_ms = v < kIntervalMinMs ? kIntervalMinMs : v > kIntervalMaxMs ? kIntervalMaxMs : v;
     if (g_interval_ms != was && g_first_said)

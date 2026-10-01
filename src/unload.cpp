@@ -36,8 +36,10 @@ DWORD WINAPI unloader(LPVOID) {
         CloseHandle(g_boot);
         if (w != WAIT_OBJECT_0) ExitThread(0);
     }
-    // the walk thread first: it is ours, it reads the world on its own, and its code must not be unmapped under it
-    if (!enemies::stop()) ExitThread(0);
+    // The walk thread first: it is ours, it reads the world on its own, and its code must not be unmapped under it. One
+    // that does not end keeps the DLL mapped, but the overlay and the hooks still go: the game is left as it was, less
+    // a thread that only reads.
+    const bool walk_stopped = enemies::stop();
     // the overlay next, while the Present hook still runs: the swapchain's vtable goes back on the render thread
     if (lifecycle::present_hooked && !overlay::unload()) ExitThread(0);
 
@@ -79,6 +81,10 @@ DWORD WINAPI unloader(LPVOID) {
                     transit::inflight(), script::inflight());
         }
         log::write("unload: no call in flight after %d ms", waited);
+    }
+    if (!walk_stopped) {
+        log::write("unload: hooks and overlay gone, the walk thread still running - staying mapped");
+        ExitThread(0);
     }
     if (lifecycle::minhook_ready) {
         MH_STATUS mu = MH_Uninitialize();
