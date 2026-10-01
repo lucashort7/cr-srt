@@ -241,6 +241,8 @@ inline constexpr uintptr_t kChallengeElapsed = 0x28;
 inline constexpr char kTransitionName[] =
     "ecs::system::getName<void __cdecl heron::game_flow::update_player_transition::system(";
 inline constexpr int kTransitionSlots = 11;
+// GameState's level id, {u64 id, pointer|1} at +0x90 and again at +0xa0 (AKTH-0114)
+inline constexpr uintptr_t kGameStateArea = 0x90;
 inline constexpr char kTransitionFixedName[] =
     "ecs::system::getName<void __cdecl heron::game_flow::player_transition_fixed_update::system(";
 inline constexpr int kTransitionFixedSlots = 2;

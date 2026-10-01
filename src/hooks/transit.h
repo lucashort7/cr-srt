@@ -6,6 +6,8 @@
 
 #include <windows.h>
 
+#include <cstdint>
+
 namespace crsrt::transit {
 
 // Solves and hooks each system, on the boot thread after the main hooks: not cached, a solve is 50-600 ms and a probe
@@ -15,5 +17,10 @@ int install(HMODULE exe);
 
 // Threads inside any of these hooks right now; the unloader waits for 0 before unmapping.
 long inflight();
+
+// GameState+0x90: the 64-bit id of the level loaded, a zone, a building or a sequence, as the transition system last
+// ran (2026-10-01: ZONE_HISS 01c080962a7d636d, a tower inside it 184dcbbd71e5463d, unchanged across its floors). 0
+// before the first call. Any thread.
+uint64_t area();
 
 }  // namespace crsrt::transit

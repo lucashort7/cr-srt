@@ -25,6 +25,17 @@ constexpr ULONGLONG kDiffEveryMs = 100;
 constexpr ULONGLONG kRateEveryMs = 20000;
 
 volatile LONG g_inflight;
+volatile LONG64 g_area;
+
+// The level id off the transition system's GameState, every call: three reads.
+void read_area(void *ctx) {
+    const uint8_t *tray = nullptr, *env = nullptr, *state = nullptr;
+    uint64_t id = 0;
+    if (mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
+        mem::copy(tray, &env, sizeof env) && env && mem::copy(env, &state, sizeof state) && state &&
+        mem::copy(state + game::kGameStateArea, &id, sizeof id))
+        InterlockedExchange64(&g_area, static_cast<LONG64>(id));
+}
 
 // Each env lives in one table only: TimelineCinematicsControl is uistate's (the hud_visibility tray), the
 // r::Ptr<GameState> is followed here. Slot = parameter * 8.
@@ -124,7 +135,10 @@ template <int I>
 void hk(void *a, void *b, void *c, void *d) {
     InterlockedIncrement(&g_inflight);
     System &s = g_systems[I];
-    if (!lifecycle::stopping) on_call(s, c);
+    if (!lifecycle::stopping) {
+        on_call(s, c);
+        if (I == 0) read_area(c);
+    }
     s.original(a, b, c, d);
     InterlockedDecrement(&g_inflight);
 }
@@ -158,5 +172,7 @@ int install(HMODULE exe) {
 }
 
 long inflight() { return g_inflight; }
+
+uint64_t area() { return static_cast<uint64_t>(InterlockedCompareExchange64(&g_area, 0, 0)); }
 
 }  // namespace crsrt::transit

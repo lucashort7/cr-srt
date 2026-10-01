@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hooks/runner.h"
 #include "hooks/sonar.h"
+#include "hooks/transit.h"
 #include "hooks/uistate.h"
 #include "log.h"
 #include "memory.h"
@@ -19,6 +20,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
+#include <iterator>
 
 #include "imgui.h"
 
@@ -62,6 +65,10 @@ bool g_stale_said;
 // them, and the allies within the same radius under them, at most `[allies] rows`, only while there is one.
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
+// [areas] <id's first 8 hex digits>=<label>: the name of a level the sonar gives no district for, as Lucas writes it.
+// g_area_label is the label read for g_area_labelled; g_zone_area the level id last seen with a district, the zone's.
+uint64_t g_area_labelled, g_zone_area;
+char g_area_label[32];
 
 enemies::List g_list;  // the render thread's copy, one per draw
 
@@ -119,6 +126,14 @@ void read_ini(long frame) {
     g_rows = std::min(g_rows, enemies::kMaxRows);
     g_ally_rows = static_cast<int>(GetPrivateProfileIntW(L"allies", L"rows", 4, ini.c_str()));
     g_ally_rows = std::min(g_ally_rows, enemies::kMaxRows);
+    const uint64_t area = transit::area();
+    if (area != g_area_labelled) {
+        wchar_t key[16], label[32];
+        std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(area >> 32));
+        GetPrivateProfileStringW(L"areas", key, L"", label, static_cast<DWORD>(std::size(label)), ini.c_str());
+        std::snprintf(g_area_label, sizeof g_area_label, "%ls", label);
+        g_area_labelled = area;
+    }
 }
 
 // "hiss", or the hash's first four digits.
@@ -270,10 +285,17 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
         std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
     if (!stale && p.in_story) std::strncat(s, " [story]", sizeof s - std::strlen(s) - 1);
     line(pen, s);
-    // the scripted level the player is in, named by the Luau call that entered it; "--" in the open world
+    // the level the player is in, named by the Luau call that entered it, or by GameState's level id when the sonar
+    // names no district and the id is not the zone's: a building, by the [areas] label or the id's first digits
     char seq[64];
+    const uint64_t area = transit::area();
+    if (g_shown.has && area) g_zone_area = area;
     if (sequence::current(seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
+    else if (!g_shown.has && area && area != g_zone_area && g_area_label[0] && area == g_area_labelled)
+        std::snprintf(s, sizeof s, "section: %s", g_area_label);
+    else if (!g_shown.has && area && area != g_zone_area)
+        std::snprintf(s, sizeof s, "section: %08lx", static_cast<unsigned long>(area >> 32));
     else
         std::snprintf(s, sizeof s, "section: --");
     line(pen, s);
