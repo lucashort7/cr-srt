@@ -10,6 +10,7 @@
 #include "memory.h"
 #include "names.h"
 #include "player.h"
+#include "sequence.h"
 
 #include <windows.h>
 
@@ -268,6 +269,13 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     else
         std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
     if (!stale && p.in_story) std::strncat(s, " [story]", sizeof s - std::strlen(s) - 1);
+    line(pen, s);
+    // the scripted level the player is in, named by the Luau call that entered it; "--" in the open world
+    char seq[64];
+    if (sequence::current(seq, sizeof seq))
+        std::snprintf(s, sizeof s, "section: %s", seq);
+    else
+        std::snprintf(s, sizeof s, "section: --");
     line(pen, s);
     const long secs = static_cast<long>(g_zone_secs + g_away);
     std::snprintf(s, sizeof s, "ts: %02ld:%02ld%s", secs / 60, secs % 60, uistate::paused() ? " [paused]" : "");
