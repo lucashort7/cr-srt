@@ -133,6 +133,7 @@ inline constexpr Machine kMachines[] = {
     {0xe8187e3d, "central_trial"},    // SHUM III, a checkpoint time trial with traps, 3 minutes at most
     {0x74641c62, "pattern_waves"},    // SHUM III, survive the encounter waves, scored
     {0xab586530, "downtown_defend"},  // SHUM III, defend the valuables and defeat all enemies, scored
+    {0xb6bd6e10, "twisted_jrpg"},     // the JRPG minigame, scored (build 1.4.0, 2026-10-01)
 };
 
 }  // namespace crsrt::names
