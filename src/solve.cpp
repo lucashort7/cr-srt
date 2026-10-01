@@ -127,4 +127,55 @@ uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
     return off(fn, exe);
 }
 
+uintptr_t script_function(HMODULE exe, const char *name_text) {
+    const uint8_t *str = nullptr, *tlo = nullptr, *thi = nullptr;
+    // the name with its terminator, and a terminator before it: the whole string, not the tail of a longer one
+    const pe::Pattern name{reinterpret_cast<const uint8_t *>(name_text), nullptr, lstrlenA(name_text) + 1};
+    for (const IMAGE_SECTION_HEADER &s : pe::sections(exe)) {
+        const uint8_t *lo = reinterpret_cast<const uint8_t *>(exe) + s.VirtualAddress, *hi = lo + s.Misc.VirtualSize;
+        if (s.Characteristics & IMAGE_SCN_MEM_EXECUTE) {
+            if (!tlo) tlo = lo, thi = hi;
+            continue;
+        }
+        if (!(s.Characteristics & IMAGE_SCN_MEM_READ) || str) continue;
+        const uint8_t *hits[8];
+        const int n = pe::scan(lo, hi, name, hits, 8);
+        for (int i = 0; i < n && !str; i++)
+            if (hits[i] > lo && hits[i][-1] == 0) str = hits[i];
+    }
+    if (!str || !tlo) {
+        log::write("scan: script %s %s - not solved", name_text, str ? "found, no .text" : "not found");
+        return 0;
+    }
+    const uint8_t *lea = nullptr;
+    int leas = 0;
+    for (const uint8_t *p = tlo; p + 7 <= thi; p++) {
+        if (p[0] != 0x48 || p[1] != 0x8d || (p[2] & 0xc7) != 0x05) continue;
+        if (p + 7 + *reinterpret_cast<const int32_t *>(p + 3) == str) {
+            if (!lea) lea = p;
+            leas++;
+        }
+    }
+    if (leas != 1 || lea + 28 > thi) {
+        log::write("scan: %d leas to script %s - not solved", leas, name_text);
+        return 0;
+    }
+    // 48 89 85 d32 (mov [rbp+d], rax), 48 8d 05 rel32 (lea rax, [fn]), 48 89 85 d32+8
+    const uint8_t *q = lea + 7;
+    const bool shape = q[0] == 0x48 && q[1] == 0x89 && q[2] == 0x85 && q[7] == 0x48 && q[8] == 0x8d && q[9] == 0x05 &&
+                       q[14] == 0x48 && q[15] == 0x89 && q[16] == 0x85 &&
+                       *reinterpret_cast<const int32_t *>(q + 17) == *reinterpret_cast<const int32_t *>(q + 3) + 8;
+    if (!shape) {
+        log::write("scan: script %s lea exe+%lx is not a {name, function} pair - not solved", name_text, off(lea, exe));
+        return 0;
+    }
+    const uint8_t *fn = q + 14 + *reinterpret_cast<const int32_t *>(q + 10);
+    if (fn < tlo || fn >= thi) {
+        log::write("scan: script %s points outside .text - not solved", name_text);
+        return 0;
+    }
+    log::write("scan: script %s lea exe+%lx -> exe+%lx", name_text, off(lea, exe), off(fn, exe));
+    return off(fn, exe);
+}
+
 }  // namespace crsrt::solve

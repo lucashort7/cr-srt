@@ -56,6 +56,7 @@ add_library(cr-srt SHARED
   src/enemies.cpp
   src/hooks/damage.cpp
   src/hooks/present.cpp
+  src/hooks/script.cpp
   src/hooks/sonar.cpp
   src/hooks/transit.cpp
   src/hooks/uistate.cpp

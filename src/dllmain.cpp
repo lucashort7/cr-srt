@@ -9,6 +9,7 @@
 #include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
+#include "hooks/script.h"
 #include "hooks/sonar.h"
 #include "hooks/transit.h"
 #include "hooks/uistate.h"
@@ -62,6 +63,8 @@ DWORD WINAPI boot_main(LPVOID) {
     // the taxi probe last: nine solves the overlay need not wait for
     if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"transit", 1, log::path(L".ini").c_str()))
         lifecycle::transit_hooked = transit::install(exe) > 0;
+    if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"script", 1, log::path(L".ini").c_str()))
+        lifecycle::script_hooked = script::install(exe) > 0;
     return 0;
 }
 

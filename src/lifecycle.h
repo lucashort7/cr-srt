@@ -15,6 +15,8 @@ inline std::atomic<bool> present_hooked{false};
 inline std::atomic<bool> damage_hooked{false};   // the probe, only with [probe] damage=1
 inline std::atomic<bool> sonar_hooked{false};    // the district; absent when its solve failed
 inline std::atomic<bool> uistate_hooked{false};  // the state probe; absent when its solve failed
-inline std::atomic<bool> transit_hooked{false};  // the taxi probe, off with [probe] transit=0
+inline std::atomic<bool> transit_hooked{false};
+inline std::atomic<bool> script_hooked{false};  // the taxi probe's script functions, off with [probe] script=0  // the
+                                                // taxi probe, off with [probe] transit=0
 
 }  // namespace crsrt::lifecycle

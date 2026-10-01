@@ -6,6 +6,7 @@
 #include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
+#include "hooks/script.h"
 #include "hooks/sonar.h"
 #include "hooks/transit.h"
 #include "hooks/uistate.h"
@@ -41,20 +42,21 @@ DWORD WINAPI unloader(LPVOID) {
     if (lifecycle::present_hooked && !overlay::unload()) ExitThread(0);
 
     if (lifecycle::runner_hooked || lifecycle::present_hooked || lifecycle::damage_hooked || lifecycle::sonar_hooked ||
-        lifecycle::uistate_hooked || lifecycle::transit_hooked) {
+        lifecycle::uistate_hooked || lifecycle::transit_hooked || lifecycle::script_hooked) {
         MH_STATUS ms = MH_DisableHook(MH_ALL_HOOKS);
         for (int t = 0; ms != MH_OK && t < 10; t++) {
             Sleep(100);
             ms = MH_DisableHook(MH_ALL_HOOKS);
         }
-        log::write("unload: hooks %s (runner %s, wrapper %s, damage %s, sonar %s, uistate %s, transit %s)",
+        log::write("unload: hooks %s (runner %s, wrapper %s, damage %s, sonar %s, uistate %s, transit %s, script %s)",
                    ms == MH_OK ? "disabled" : "disable FAILED - staying mapped",
                    lifecycle::runner_hooked ? "restored" : "never hooked",
                    lifecycle::present_hooked ? "restored" : "never hooked",
                    lifecycle::damage_hooked ? "restored" : "never hooked",
                    lifecycle::sonar_hooked ? "restored" : "never hooked",
                    lifecycle::uistate_hooked ? "restored" : "never hooked",
-                   lifecycle::transit_hooked ? "restored" : "never hooked");
+                   lifecycle::transit_hooked ? "restored" : "never hooked",
+                   lifecycle::script_hooked ? "restored" : "never hooked");
         if (ms != MH_OK) ExitThread(0);
         // A thread that jumped in before the disable counts itself within a few instructions; the render thread can
         // then sit inside the original Present for a frame or more (vsync, a minimized window) and return into our
@@ -65,14 +67,16 @@ DWORD WINAPI unloader(LPVOID) {
             Sleep(200);
             waited += 200;
             if (present::inflight() == 0 && runner::inflight() == 0 && damage::inflight() == 0 &&
-                sonar::inflight() == 0 && uistate::inflight() == 0 && transit::inflight() == 0)
+                sonar::inflight() == 0 && uistate::inflight() == 0 && transit::inflight() == 0 &&
+                script::inflight() == 0)
                 break;
             if (waited == 2000)
                 log::write(
-                    "unload: %ld present / %ld runner / %ld damage / %ld sonar / %ld uistate / %ld transit call(s) "
-                    "still in flight after 2 s, waiting",
+                    "unload: %ld present / %ld runner / %ld damage / %ld sonar / %ld uistate / %ld transit / %ld "
+                    "script "
+                    "call(s) still in flight after 2 s, waiting",
                     present::inflight(), runner::inflight(), damage::inflight(), sonar::inflight(), uistate::inflight(),
-                    transit::inflight());
+                    transit::inflight(), script::inflight());
         }
         log::write("unload: no call in flight after %d ms", waited);
     }

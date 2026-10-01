@@ -19,4 +19,10 @@ uintptr_t runner(HMODULE exe);
 // logged. `what` names it in the log.
 uintptr_t system(HMODULE exe, const char *name, const char *what);
 
+// The exe offset of the C function the game registers for Luau under exactly `name` (nl_game_jump_to,
+// return_point_save_then_switch_to_level), or 0 with the reason logged. The game builds each table of {name, function}
+// pairs on the stack: lea rax, [name]; mov [rbp+d], rax; lea rax, [fn]; mov [rbp+d+8], rax. Found by that shape after
+// the one lea to the name.
+uintptr_t script_function(HMODULE exe, const char *name);
+
 }  // namespace crsrt::solve
