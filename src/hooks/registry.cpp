@@ -19,11 +19,15 @@ namespace {
 
 constexpr int kMaxHooks = 64;
 Hook *g_hooks[kMaxHooks];
-volatile LONG g_count;
+// g_taken counts the slots handed out, g_count the slots filled: a reader (the runner's log_meters, while the boot
+// still installs) sees a count only once its slot holds a hook. Hooks are installed by one thread at a time.
+volatile LONG g_taken, g_count;
 
 void add(Hook *hook) {
-    const LONG i = InterlockedIncrement(&g_count) - 1;
-    if (i < kMaxHooks) g_hooks[i] = hook;
+    const LONG i = InterlockedIncrement(&g_taken) - 1;
+    if (i >= kMaxHooks) return;
+    g_hooks[i] = hook;
+    InterlockedIncrement(&g_count);  // a full barrier: the slot is written before the count says so
 }
 
 int hooks_now() { return g_count < kMaxHooks ? static_cast<int>(g_count) : kMaxHooks; }

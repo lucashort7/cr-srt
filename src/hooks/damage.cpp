@@ -194,6 +194,7 @@ float hk_take_damage(float *row, const uint8_t *src, void *cfg, uint64_t ent, fl
     if (call.stopping()) return original(row, src, cfg, ent, amount, now, evt, bus, tags);
     const bool readable = mem::readable(row, game::kHealthRowSize);
     const float before = readable ? row[0] : 0.0f;
+    call.before_original();  // note() after the original is ours too, but its cost is a log line and not metered
     const float r = original(row, src, cfg, ent, amount, now, evt, bus, tags);
     if (readable) note(row, src, ent, amount, before, row[0], reinterpret_cast<const int32_t *>(row)[1], r);
     return r;

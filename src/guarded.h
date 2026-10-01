@@ -11,7 +11,8 @@ namespace crsrt::guarded {
 // Adds the handler, first in line. Before any copy; again is a no-op. False when Windows refuses.
 bool install();
 
-// Removes the handler. After every thread that copies has stopped, before the DLL is unmapped.
+// Removes the handler and waits for every call of it already running. After every thread that copies has stopped,
+// before the DLL is unmapped.
 void remove();
 
 // The handler is in place: copy() is safe to call.

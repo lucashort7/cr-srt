@@ -42,14 +42,22 @@ namespace crsrt::guarded {
 namespace {
 
 std::atomic<void *> g_handler{nullptr};
+// Threads inside on_exception: the handler runs for every exception of every thread of the game, and Windows does not
+// wait for a running call when the handler is removed. remove() waits on this before the DLL may be unmapped.
+volatile LONG g_inside;
 
 LONG CALLBACK on_exception(EXCEPTION_POINTERS *e) {
+    InterlockedIncrement(&g_inside);
     const DWORD code = e->ExceptionRecord->ExceptionCode;
-    if ((code != EXCEPTION_ACCESS_VIOLATION && code != STATUS_GUARD_PAGE_VIOLATION) ||
-        e->ContextRecord->Rip != reinterpret_cast<DWORD64>(crsrt_guarded_movsb))
-        return EXCEPTION_CONTINUE_SEARCH;
-    e->ContextRecord->Rip = reinterpret_cast<DWORD64>(crsrt_guarded_fail);
-    return EXCEPTION_CONTINUE_EXECUTION;
+    LONG verdict = EXCEPTION_CONTINUE_SEARCH;
+    if ((code == EXCEPTION_ACCESS_VIOLATION || code == STATUS_GUARD_PAGE_VIOLATION ||
+         code == EXCEPTION_IN_PAGE_ERROR) &&
+        e->ContextRecord->Rip == reinterpret_cast<DWORD64>(crsrt_guarded_movsb)) {
+        e->ContextRecord->Rip = reinterpret_cast<DWORD64>(crsrt_guarded_fail);
+        verdict = EXCEPTION_CONTINUE_EXECUTION;
+    }
+    InterlockedDecrement(&g_inside);
+    return verdict;
 }
 
 }  // namespace
@@ -63,7 +71,13 @@ bool install() {
 }
 
 void remove() {
-    if (void *h = g_handler.exchange(nullptr)) RemoveVectoredExceptionHandler(h);
+    void *h = g_handler.exchange(nullptr);
+    if (!h) return;
+    RemoveVectoredExceptionHandler(h);
+    // A thread can be inside the handler, or between ntdll's read of the entry and the handler's first instruction:
+    // the count covers the first, the sleep the second, as hooks::release's does for a detour.
+    do Sleep(200);
+    while (g_inside != 0);
 }
 
 bool installed() { return g_handler.load() != nullptr; }
