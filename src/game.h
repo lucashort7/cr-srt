@@ -56,8 +56,35 @@ inline constexpr uint8_t kTakeDamagePrologue[] = {0x48, 0x8b, 0xc4, 0x48, 0x89, 
 inline constexpr uint32_t kHealthRowSize = 0x38;
 
 // --- Component type hashes.
-inline constexpr uint32_t kPlayerTag = 0x59f99e92;  // the immediate inside get_player; its name is unknown
-inline constexpr uint32_t kHealth = 0x3dc2bc5c;     // heron::health::component::Health: +0 fraction, +4 max points
+// The immediate inside get_player: heron::resourcing::component::ResourcingData, the player's Power and Command
+// Resource (2026-10-01, Stats & Effects 2240 and 4000 against the chunk). A record per resource: Power's at +0, its
+// max at +8 and the current value at +0xc, both floats (2240 → 0 over a held Spike, back at ~35/s); Command's at
+// +0x210 with its max at +0x214 (the 4000 at +0x218 and +0x21c are copies of it, not a current value); the charge is
+// a 0..1 fraction at +0xd0, the only lane that moved when the ultimate was used (0.676 → 0.006, then ~0.013 a hit).
+// The column is 0x350 bytes.
+inline constexpr uint32_t kPlayerTag = 0x59f99e92;
+inline constexpr uint32_t kResourcing = kPlayerTag;
+inline constexpr uint32_t kResourcingRowSize = 0x228;  // the bytes read, through Command's record
+inline constexpr uintptr_t kPowerMax = 0x8;
+inline constexpr uintptr_t kPower = 0xc;
+inline constexpr uintptr_t kCommandFraction = 0xd0;
+inline constexpr uintptr_t kCommandMax = 0x214;
+// heron::player_progression::component::PlayerProgression, 0x2c bytes: three ints each followed by a cap and the
+// value over the cap as a float. +0 Build Power (10), +0x14 Aberrant Strength (143), +0x20 Ability Strength (6);
+// the caps (78, 180, 12) are unread by the HUD.
+inline constexpr uint32_t kPlayerProgression = 0x112b3a6d;
+inline constexpr uint32_t kPlayerProgressionRowSize = 0x2c;
+inline constexpr uintptr_t kBuildPower = 0x0;
+inline constexpr uintptr_t kAberrantStrength = 0x14;
+inline constexpr uintptr_t kAbilityStrength = 0x20;
+// heron::core_upgrade::component::CoreUpgradeData, 0x10 bytes: two (int level, u32 kind) pairs, the kinds ca177632
+// then c359eea4, both at level 9 on 2026-10-01. Which is Health and which Power is unverified (the exe names
+// HealthCoreUpgrade and ResourceCoreUpgrade); the first is drawn as Health's. Every 3 upgrade points pay one level.
+inline constexpr uint32_t kCoreUpgrade = 0x1a23eb9d;
+inline constexpr uint32_t kCoreUpgradeRowSize = 0x10;
+inline constexpr uintptr_t kHealthUpgrades = 0x0;
+inline constexpr uintptr_t kPowerUpgrades = 0x8;
+inline constexpr uint32_t kHealth = 0x3dc2bc5c;  // heron::health::component::Health: +0 fraction, +4 max points
 inline constexpr uint32_t kHealthLink = 0xddc84e0c;
 inline constexpr uint32_t kHealthFlags = 0x6432f1af;
 inline constexpr uint32_t kDead = 0x6e63a89c;

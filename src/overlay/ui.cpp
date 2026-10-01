@@ -312,23 +312,46 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     line(pen, s);
 }
 
-// The player: Health and Power, the game's Main Stats, each with its upgrade levels at the end, then Build Power and
-// Aberrant Strength, Source and Talent Points, and the movement. "--" for a value not read yet, or not read now: a
-// held-over value would read as live.
+// A resource line: `name: cur / max [pct%] (upgrades)`, the upgrade level when the resource has one (`levelled`), "--"
+// wherever the value is not read now.
+void resource_line(Pen &pen, const char *name, bool have, float cur, float max, bool levelled, bool have_level,
+                   int level, const char *tail) {
+    char s[96], upgrades[16] = "";
+    if (levelled) {
+        if (have_level)
+            std::snprintf(upgrades, sizeof upgrades, " (%d)", level);
+        else
+            std::snprintf(upgrades, sizeof upgrades, " (--)");
+    }
+    // Written as a negation so a NaN is refused too; the DeMorgan form would let it through.
+    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
+    if (!have || !(cur >= 0.0f) || !(max > 0.0f))
+        std::snprintf(s, sizeof s, "%s: -- / -- [--%%]%s%s", name, upgrades, tail);
+    else
+        std::snprintf(s, sizeof s, "%s: %ld / %ld [%ld%%]%s%s", name, std::lround(cur), std::lround(max),
+                      std::lround(cur * 100.0f / max), upgrades, tail);
+    line(pen, s);
+}
+
+// The player: Health, Power and Command Resource, the game's Main Stats, the first two with their core upgrade level at
+// the end, then Build Power, Aberrant and Ability Strength, Source and Talent Points, and the movement. "--" for a
+// value not read yet, or not read now: a held-over value would read as live.
 void player_section(Pen &pen, const player::State &p, bool stale) {
     char s[96];
-    // Written as a negation so a NaN fraction is refused too; the DeMorgan form would let it through.
-    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
-    if (stale || !p.has_health || !(p.fraction >= 0.0f && p.fraction < 100.0f) || p.max <= 0) {
-        std::snprintf(s, sizeof s, "hp: -- / -- [--%%] (--/--)");
-    } else {
-        const int hp = game::points(p.fraction, p.max);
-        std::snprintf(s, sizeof s, "hp: %d / %d [%d%%] (--/--)%s", hp, static_cast<int>(p.max),
-                      static_cast<int>(static_cast<long long>(hp) * 100 / p.max), p.dead ? " [dead]" : "");
-    }
+    // A NaN fraction fails both comparisons, so it is refused as well.
+    const bool health = !stale && p.has_health && p.fraction >= 0.0f && p.fraction < 100.0f && p.max > 0;
+    const float hp = health ? static_cast<float>(game::points(p.fraction, p.max)) : 0.0f;
+    const bool upgrades = !stale && p.has_upgrades;
+    resource_line(pen, "hp", health, hp, static_cast<float>(p.max), true, upgrades, p.health_upgrades,
+                  health && p.dead ? " [dead]" : "");
+    resource_line(pen, "pw", !stale && p.has_power, p.power, p.power_max, true, upgrades, p.power_upgrades, "");
+    resource_line(pen, "cr", !stale && p.has_power, p.command, p.command_max, false, false, 0, "");
+    if (stale || !p.has_progression)
+        std::snprintf(s, sizeof s, "bp: --   as: --   ab: --");
+    else
+        std::snprintf(s, sizeof s, "bp: %d   as: %d   ab: %d", static_cast<int>(p.build_power),
+                      static_cast<int>(p.aberrant), static_cast<int>(p.ability));
     line(pen, s);
-    line(pen, "pw: -- / -- [--%] (--/--)");
-    line(pen, "bp: --   as: --");
     double source = 0.0, talent = 0.0;
     if (stale || !uistate::currency(&source, &talent))
         std::snprintf(s, sizeof s, "src: --   tp: --");

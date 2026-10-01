@@ -32,7 +32,9 @@ struct Memo {
     int64_t arch = -1;
     uint32_t health = kAbsent, transform = kAbsent, movement = kAbsent, state = kAbsent;
     uint32_t gap = kAbsent, status = kAbsent, logic = kAbsent;
+    uint32_t resourcing = kAbsent, progression = kAbsent, upgrades = kAbsent;
     bool dead = false;
+    uint32_t base = kAbsent;  // the lowest row present: where the one proving read starts
 } g_memo;
 
 int g_resolutions;
@@ -89,6 +91,8 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
     const int s = ecs::type_index(a, game::kMovementState);
     const int g = ecs::type_index(a, game::kInGap), st = ecs::type_index(a, game::kStatus);
     const int ld = ecs::type_index(a, game::kLogicData);
+    const int rs = ecs::type_index(a, game::kResourcing), pp = ecs::type_index(a, game::kPlayerProgression);
+    const int cu = ecs::type_index(a, game::kCoreUpgrade);
     if (ld >= 0) {  // the column's width: the next column's offset minus its own (rows times the row size)
         uint32_t next = UINT32_MAX;
         for (uint32_t i = 0; i < a.count; i++)
@@ -107,16 +111,25 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
               g < 0 ? kAbsent : a.offsets[g],
               st < 0 ? kAbsent : a.offsets[st],
               ld < 0 ? kAbsent : a.offsets[ld],
-              false};
+              rs < 0 ? kAbsent : a.offsets[rs],
+              pp < 0 ? kAbsent : a.offsets[pp],
+              cu < 0 ? kAbsent : a.offsets[cu],
+              false,
+              kAbsent};
+    g_memo.base = g_memo.health;
+    for (const uint32_t o : {g_memo.progression, g_memo.upgrades})
+        if (o != kAbsent && o < g_memo.base) g_memo.base = o;
     ecs::TypeList list;
     g_memo.dead = ecs::type_list(w, index, list) && ecs::has_type(list, game::kDead);
     const bool moved = was.world != world || was.chunk != chunk || was.arch != index || was.health != g_memo.health ||
                        was.transform != g_memo.transform || was.movement != g_memo.movement ||
                        was.state != g_memo.state || was.gap != g_memo.gap || was.status != g_memo.status ||
-                       was.logic != g_memo.logic;
+                       was.logic != g_memo.logic || was.resourcing != g_memo.resourcing ||
+                       was.progression != g_memo.progression || was.upgrades != g_memo.upgrades;
     if (moved && g_resolutions < kResolutionsLogged) {
         g_resolutions++;
         char health[16], transform[16], movement[16], state[16], gap[16], status[16], logic[16];
+        char resourcing[16], progression[16], upgrades[16];
         offset_text(g_memo.health, health);
         offset_text(g_memo.transform, transform);
         offset_text(g_memo.movement, movement);
@@ -124,11 +137,15 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
         offset_text(g_memo.gap, gap);
         offset_text(g_memo.status, status);
         offset_text(g_memo.logic, logic);
+        offset_text(g_memo.resourcing, resourcing);
+        offset_text(g_memo.progression, progression);
+        offset_text(g_memo.upgrades, upgrades);
         log::write(
             "player: rows at arch %ld chunk %p: Health %s, transform %s, Movement %s, MovementState %s, InGap "
-            "%s, Status %s, LogicData %s%s",
+            "%s, Status %s, LogicData %s, ResourcingData %s, PlayerProgression %s, CoreUpgradeData %s%s",
             static_cast<long>(index), reinterpret_cast<void *>(chunk), health, transform, movement, state, gap, status,
-            logic, g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
+            logic, resourcing, progression, upgrades,
+            g_resolutions == kResolutionsLogged ? " (the last such line)" : "");
         // The full type list once per archetype new to this process, tags included: a diff of two lists names the
         // component a cutscene or a death adds (AKTH-0110).
         ecs::TypeList tags;
@@ -137,15 +154,15 @@ Resolved resolve(void *world, uint64_t chunk, bool force) {
     return kFresh;
 }
 
-// Row `offset`, `size` bytes, readable, given `run` bytes readable from the Health row: the rows above Health, every
+// Row `offset`, `size` bytes, readable, given `run` bytes readable from the memo's base row: the rows above it, every
 // row in each player archetype seen, cost no VirtualQuery of their own.
 bool row_readable(uint64_t chunk, uint32_t offset, uint32_t size, size_t run) {
     if (offset == kAbsent) return false;
-    if (offset >= g_memo.health) return offset - g_memo.health + size <= run;
+    if (offset >= g_memo.base) return offset - g_memo.base + size <= run;
     return mem::readable(reinterpret_cast<const void *>(chunk + offset), size);
 }
 
-// The bytes the memo's rows span from the Health row, read once with ReadProcessMemory to prove them: a VirtualQuery
+// The bytes the memo's rows span from its base row, read once with ReadProcessMemory to prove them: a VirtualQuery
 // here cost 0.5 ms on average under the game's spawning (2026-09-30, AKTH-0111), a queue on the address-space lock.
 size_t span_readable(uint64_t chunk) {
     uint32_t end = g_memo.health + game::kHealthRowSize;
@@ -154,25 +171,28 @@ size_t span_readable(uint64_t chunk) {
                                 {g_memo.state, game::kMovementStateRowSize},
                                 {g_memo.gap, game::kInGapRowSize},
                                 {g_memo.status, game::kStatusRowSize},
-                                {g_memo.logic, game::kLogicDataProbe}};
+                                {g_memo.logic, game::kLogicDataProbe},
+                                {g_memo.resourcing, game::kResourcingRowSize},
+                                {g_memo.progression, game::kPlayerProgressionRowSize},
+                                {g_memo.upgrades, game::kCoreUpgradeRowSize}};
     for (const auto &r : rows)
-        if (r[0] != kAbsent && r[0] >= g_memo.health && r[0] + r[1] > end) end = r[0] + r[1];
-    const size_t span = end - g_memo.health;
-    return mem::readable(reinterpret_cast<const void *>(chunk + g_memo.health), span) ? span : 0;
+        if (r[0] != kAbsent && r[0] >= g_memo.base && r[0] + r[1] > end) end = r[0] + r[1];
+    const size_t span = end - g_memo.base;
+    return mem::readable(reinterpret_cast<const void *>(chunk + g_memo.base), span) ? span : 0;
 }
 
-// The memo resolved for get_player's chunk with its Health row readable, and the bytes readable from that row; 0 when
-// not. A kept memo whose row is unreadable is wrong: the scan decides.
+// The memo resolved for get_player's chunk with its Health row readable, and the bytes readable from the memo's base
+// row; 0 when not. A kept memo whose row is unreadable is wrong: the scan decides.
 size_t locate(void *world, uint64_t *chunk_out) {
     const uint64_t chunk = player_chunk(world);
     if (!chunk) return 0;
     Resolved r = resolve(world, chunk, false);
     size_t run = r != kFailed ? span_readable(chunk) : 0;
-    if (r == kKept && run < 8) {
+    if (r == kKept && !row_readable(chunk, g_memo.health, game::kHealthRowSize, run)) {
         r = resolve(world, chunk, true);
         run = r != kFailed ? span_readable(chunk) : 0;
     }
-    if (run < 8) return 0;
+    if (r == kFailed || !row_readable(chunk, g_memo.health, game::kHealthRowSize, run)) return 0;
     *chunk_out = chunk;
     return run;
 }
@@ -194,6 +214,28 @@ void read(void *world, State &out) {
     out.has_health = true;
     out.fraction = at<float>(chunk + g_memo.health);
     out.max = at<int32_t>(chunk + g_memo.health + 4);
+    if (row_readable(chunk, g_memo.resourcing, game::kResourcingRowSize, run)) {
+        const uint64_t row = chunk + g_memo.resourcing;
+        out.power = at<float>(row + game::kPower);
+        out.power_max = at<float>(row + game::kPowerMax);
+        out.command_max = at<float>(row + game::kCommandMax);
+        out.command = at<float>(row + game::kCommandFraction) * out.command_max;
+        out.has_power = std::isfinite(out.power) && std::isfinite(out.power_max) && std::isfinite(out.command) &&
+                        std::isfinite(out.command_max);
+    }
+    if (row_readable(chunk, g_memo.progression, game::kPlayerProgressionRowSize, run)) {
+        const uint64_t row = chunk + g_memo.progression;
+        out.build_power = at<int32_t>(row + game::kBuildPower);
+        out.aberrant = at<int32_t>(row + game::kAberrantStrength);
+        out.ability = at<int32_t>(row + game::kAbilityStrength);
+        out.has_progression = true;
+    }
+    if (row_readable(chunk, g_memo.upgrades, game::kCoreUpgradeRowSize, run)) {
+        const uint64_t row = chunk + g_memo.upgrades;
+        out.health_upgrades = at<int32_t>(row + game::kHealthUpgrades);
+        out.power_upgrades = at<int32_t>(row + game::kPowerUpgrades);
+        out.has_upgrades = true;
+    }
     if (row_readable(chunk, g_memo.gap, game::kInGapRowSize, run)) {
         out.gap = at<uint64_t>(chunk + g_memo.gap);
         out.has_gap = true;

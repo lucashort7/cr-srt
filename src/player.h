@@ -29,6 +29,13 @@ struct State {
     bool has_logic = false;  // LogicData row 0, whole: the story-area probe
     bool in_story = false;   // LogicData +0x42c == 2: the game's "Not While in Story Area"
     bool dead = false;       // the archetype carries heron::health::component::Dead
+    // The Main Stats beside Health, and the derived ones: ResourcingData, PlayerProgression and CoreUpgradeData rows,
+    // each has_* false when its row did not resolve. The floats are the game's, unchecked beyond being finite.
+    bool has_power = false, has_progression = false, has_upgrades = false;
+    float power = 0.0f, power_max = 0.0f;                // ResourcingData +0xc, +0x8
+    float command = 0.0f, command_max = 0.0f;            // ResourcingData +0xd0 (a fraction) times +0x214
+    int32_t build_power = 0, aberrant = 0, ability = 0;  // PlayerProgression +0, +0x14, +0x20
+    int32_t health_upgrades = 0, power_upgrades = 0;     // CoreUpgradeData +0, +8
     uint8_t logic[2064] = {};
     float h = 0.0f, total = 0.0f;  // its length on the ground plane (x-z), and its whole length
     // Where each value was read, for the log and a Cheat Engine check: 0 = that row was not read.
