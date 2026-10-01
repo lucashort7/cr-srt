@@ -251,6 +251,10 @@ inline constexpr uintptr_t kGameStateArea = 0x90;
 // descriptor of std::basic_string_view<char, r::CharTraitsInsensitive<char>> (measured 2026-10-01): a string, read as
 // a probe until it is named.
 inline constexpr uintptr_t kTransitionRequestText = 0x38;
+// GameState+0xf0: the transition's phase, 0x12 while a fast travel is in flight and 3 once the player stands at the
+// destination (2026-10-01); the level id at +0x90 is the destination's by then.
+inline constexpr uintptr_t kGameStatePhase = 0xf0;
+inline constexpr uint64_t kPhaseTravelling = 0x12;
 inline constexpr char kTransitionFixedName[] =
     "ecs::system::getName<void __cdecl heron::game_flow::player_transition_fixed_update::system(";
 inline constexpr int kTransitionFixedSlots = 2;

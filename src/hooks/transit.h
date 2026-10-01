@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <cstddef>
 #include <cstdint>
 
 namespace crsrt::transit {
@@ -22,5 +23,9 @@ long inflight();
 // ran (2026-10-01: ZONE_HISS 01c080962a7d636d, a tower inside it 184dcbbd71e5463d, unchanged across its floors). 0
 // before the first call. Any thread.
 uint64_t area();
+
+// The area the last fast travel landed in (the `areas/<name>` segment of the fast travel point's asset path, which
+// the TransitionRequest carries), with the level id current when the travel ended. False until one has. Any thread.
+bool point(char *out, size_t cap, uint64_t *id);
 
 }  // namespace crsrt::transit

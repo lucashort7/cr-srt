@@ -287,8 +287,12 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     // the level the player is in: the Luau call that entered it, else GameState's level id by its [areas] label or its
     // first digits, a zone, a building or an arena alike
     char seq[64];
+    uint64_t point_id = 0;
     const uint64_t area = transit::area();
-    if (sequence::name_for(area, seq, sizeof seq))
+    // a fast travel names the area it landed in, finer than the level, and holds while the level is that one
+    if (transit::point(seq, sizeof seq, &point_id) && area && point_id == area)
+        std::snprintf(s, sizeof s, "section: %s", seq);
+    else if (sequence::name_for(area, seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
     else if (area && g_area_label[0] && area == g_area_labelled)
         std::snprintf(s, sizeof s, "section: %s", g_area_label);

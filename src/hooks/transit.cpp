@@ -30,13 +30,44 @@ volatile LONG g_inflight;
 volatile LONG64 g_area;
 
 // The level id off the transition system's GameState, every call: three reads.
+// The fast travel point: the area parsed off the request's path, pending until the travel's phase leaves 0x12,
+// then bound to the level id current at that moment. One writer (the transition thread), readers under the lock.
+SRWLOCK g_point_lock = SRWLOCK_INIT;
+char g_pending_area[64];
+char g_point_area[64];
+uint64_t g_point_id;
+
 void read_area(void *ctx) {
     const uint8_t *tray = nullptr, *env = nullptr, *state = nullptr;
-    uint64_t id = 0;
-    if (mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
-        mem::copy(tray, &env, sizeof env) && env && mem::copy(env, &state, sizeof state) && state &&
-        mem::copy(state + game::kGameStateArea, &id, sizeof id))
-        InterlockedExchange64(&g_area, static_cast<LONG64>(id));
+    uint64_t id = 0, phase = 0;
+    if (!(mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
+          mem::copy(tray, &env, sizeof env) && env && mem::copy(env, &state, sizeof state) && state &&
+          mem::copy(state + game::kGameStateArea, &id, sizeof id)))
+        return;
+    InterlockedExchange64(&g_area, static_cast<LONG64>(id));
+    if (g_pending_area[0] && mem::copy(state + game::kGameStatePhase, &phase, sizeof phase) &&
+        phase != game::kPhaseTravelling) {
+        AcquireSRWLockExclusive(&g_point_lock);
+        std::memcpy(g_point_area, g_pending_area, sizeof g_point_area);
+        g_point_id = id;
+        g_pending_area[0] = 0;
+        ReleaseSRWLockExclusive(&g_point_lock);
+        log::write("transit: fast travel landed in %s, level %016llx", g_point_area,
+                   static_cast<unsigned long long>(id));
+    }
+}
+
+// `areas/<name>/` out of a fast travel point's path, into `out`; false when the path has none.
+bool area_of(const char *path, size_t len, char *out, size_t cap) {
+    const char *key = "areas/";
+    for (size_t i = 0; i + 6 < len; i++) {
+        if (std::memcmp(path + i, key, 6) != 0) continue;
+        size_t j = i + 6, n = 0;
+        while (j < len && path[j] != '/' && path[j] != 0 && n + 1 < cap) out[n++] = path[j++];
+        out[n] = 0;
+        return n > 0;
+    }
+    return false;
 }
 
 const uint8_t *g_request_text;  // the last string pointer logged, so each is logged once
@@ -93,6 +124,13 @@ void read_request(void *ctx, long call) {
     std::memcpy(&g_pending_len, raw + 0x14, 4);
     std::memcpy(&g_pending_chars, raw + 0x18, 8);
     g_pending_calls = 0;
+    // the request is already consumed when this system sees it: the string's block is freed, its first 8 bytes are
+    // the freelist link, and the path past them survives long enough to parse (measured 2026-10-01, 4 travels)
+    char path[257] = {};
+    if (g_pending_chars && g_pending_len > 8 && g_pending_len < sizeof path &&
+        mem::copy(g_pending_chars + 8, path, g_pending_len - 8) &&
+        area_of(path, g_pending_len - 8, g_pending_area, sizeof g_pending_area))
+        log::write("transit: fast travel to %s (call %ld)", g_pending_area, call);
     uint8_t own[0x50] = {};
     if (mem::copy(req + 0x30, own, sizeof own)) {
         char h2[sizeof own * 2 + 1] = {};
@@ -239,6 +277,17 @@ int install(HMODULE exe) {
 }
 
 long inflight() { return g_inflight; }
+
+bool point(char *out, size_t cap, uint64_t *id) {
+    AcquireSRWLockShared(&g_point_lock);
+    const bool have = g_point_area[0] != 0;
+    if (have) {
+        std::snprintf(out, cap, "%s", g_point_area);
+        *id = g_point_id;
+    }
+    ReleaseSRWLockShared(&g_point_lock);
+    return have;
+}
 
 uint64_t area() { return static_cast<uint64_t>(InterlockedCompareExchange64(&g_area, 0, 0)); }
 
