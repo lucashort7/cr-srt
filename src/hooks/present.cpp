@@ -137,7 +137,9 @@ uint64_t hk_wrapper(void *self, void *b, void *c, void *d) {
 bool install(HMODULE exe) {
     g_exe = exe;
     const auto *wrapper = reinterpret_cast<const uint8_t *>(exe) + game::kPresentWrapper;
-    dump16("capture: wrapper exe+1cfead0", wrapper);
+    char what[48];
+    std::snprintf(what, sizeof what, "capture: wrapper exe+%lx", static_cast<unsigned long>(game::kPresentWrapper));
+    dump16(what, wrapper);
     if (!mem::readable(wrapper, sizeof game::kPresentWrapperPrologue)) return false;
     for (size_t i = 0; i < sizeof game::kPresentWrapperPrologue; i++)
         if (wrapper[i] != game::kPresentWrapperPrologue[i]) {
