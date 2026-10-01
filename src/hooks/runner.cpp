@@ -4,13 +4,12 @@
 #include "clock.h"
 #include "envwatch.h"
 #include "game.h"
+#include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
 #include "motion.h"
 #include "player.h"
-
-#include "MinHook.h"
 
 #include <algorithm>
 #include <atomic>
@@ -23,11 +22,10 @@ namespace {
 
 using RunnerFn = void (*)(void *, void *, void *, void *);
 
-RunnerFn g_original;
+hooks::Hook g_hook("runner");
 std::atomic<Tick> g_tick{nullptr};
 std::atomic<void *> g_world{nullptr};  // read by the damage probe from other threads
 volatile LONG g_calls;
-volatile LONG g_inflight;
 
 // Runner -> render thread: the player as the last call read it.
 SRWLOCK g_lock = SRWLOCK_INIT;
@@ -160,18 +158,17 @@ void log_meters(LONG n) {
 }
 
 void hk_runner(void *a, void *b, void *c, void *d) {
-    InterlockedIncrement(&g_inflight);
+    hooks::Call call(g_hook);
     LONG n = InterlockedIncrement(&g_calls);
-    if (lifecycle::stopping) {
-        g_original(a, b, c, d);
-        InterlockedDecrement(&g_inflight);
+    if (call.stopping()) {
+        g_hook.original<RunnerFn>()(a, b, c, d);
         return;
     }
     void *world = a ? *static_cast<void **>(a) : nullptr;  // every call: nothing assumes the world outlives a load
     if (n == 1) {
         g_world = world;
         log::write("runner: first call tid %lu, holder=%p world=%p b=%p c=%p", GetCurrentThreadId(), a, world, b, c);
-        log_env_tray("runner", c, 5);  // slot 3 is FixedTime: a fixed step reads as a small float
+        hooks::log_tray("runner", c, 5);  // slot 3 is FixedTime: a fixed step reads as a small float
         player::log_first_look(world);
     } else {
         if (void *was = g_world.load(); world != was) {
@@ -200,27 +197,19 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         if (n % 600 == 0) {  // ~every 20 s at the runner's 30 calls a second
             log_player(s, n);
             log_meters(n);
+            hooks::log_meters();
         }
     }
+    call.before_original();
     const int64_t t0 = now_us();
-    g_original(a, b, c, d);
+    g_hook.original<RunnerFn>()(a, b, c, d);
     if (n > 1) meter(kOriginal, now_us() - t0, n);
-    InterlockedDecrement(&g_inflight);
 }
 
 }  // namespace
 
 bool install(HMODULE exe, uintptr_t runner_offset) {
-    void *target = reinterpret_cast<uint8_t *>(exe) + runner_offset;
-    MH_STATUS ms = MH_CreateHook(target, reinterpret_cast<void *>(&hk_runner), reinterpret_cast<void **>(&g_original));
-    if (ms != MH_OK) {
-        log::write("MH_CreateHook runner exe+%lx: %d", static_cast<unsigned long>(runner_offset), static_cast<int>(ms));
-        return false;
-    }
-    ms = MH_EnableHook(target);
-    log::write("hook on runner exe+%lx: %s (trampoline %p)", static_cast<unsigned long>(runner_offset),
-               ms == MH_OK ? "enabled" : "FAILED", reinterpret_cast<void *>(g_original));
-    return ms == MH_OK;
+    return g_hook.install(exe, runner_offset, reinterpret_cast<void *>(&hk_runner));
 }
 
 void player_state(player::State &out, long *calls) {
@@ -232,37 +221,6 @@ void player_state(player::State &out, long *calls) {
 
 void *world() { return g_world.load(); }
 
-void log_env_tray(const char *who, void *ctx, int slots) {
-    auto *at = static_cast<uint8_t *>(ctx) + game::kEnvTray;
-    if (!ctx || !mem::readable(at, 8)) {
-        log::write("%s: env tray: ctx %p unreadable", who, ctx);
-        return;
-    }
-    auto **tray = *reinterpret_cast<void ***>(at);
-    if (!mem::readable(tray, slots * 8)) {
-        log::write("%s: env tray %p (ctx %p) unreadable", who, tray, ctx);
-        return;
-    }
-    log::write("%s: env tray %p (ctx %p), %d slots", who, tray, ctx, slots);
-    envwatch::note_tray(reinterpret_cast<const uint8_t *>(tray), slots);
-    for (int i = 0; i < slots; i++) {
-        void *p = tray[i];
-        char own[160] = "-", body[200] = "unreadable";
-        if (mem::readable(p, 16)) {
-            mem::owner_of(p, own, sizeof own);
-            const auto *f = static_cast<const float *>(p);
-            const auto *b = static_cast<const uint8_t *>(p);
-            std::snprintf(body, sizeof body,
-                          "%g %g %g %g | %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x", f[0],
-                          f[1], f[2], f[3], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11],
-                          b[12], b[13], b[14], b[15]);
-        }
-        log::write("  slot %d +%x: %p (%s) %s", i, i * 8, p, own, body);
-    }
-}
-
 void set_tick(Tick tick) { g_tick = tick; }
-
-long inflight() { return g_inflight; }
 
 }  // namespace crsrt::runner

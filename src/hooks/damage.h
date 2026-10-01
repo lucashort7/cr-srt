@@ -11,7 +11,4 @@ namespace crsrt::damage {
 // MinHook must be initialised. False (nothing hooked) when the function's first bytes are not the ones game.h expects.
 bool install(HMODULE exe);
 
-// Threads inside the hook right now; the unloader waits for 0 before unmapping.
-long inflight();
-
 }  // namespace crsrt::damage

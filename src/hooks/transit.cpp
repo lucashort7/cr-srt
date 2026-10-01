@@ -3,13 +3,11 @@
 
 #include "envwatch.h"
 #include "game.h"
-#include "hooks/runner.h"
+#include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
 #include "solve.h"
-
-#include "MinHook.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -26,7 +24,6 @@ constexpr ULONGLONG kSilenceMs = 1000;  // a gap this long between two calls is 
 constexpr ULONGLONG kDiffEveryMs = 100;
 constexpr ULONGLONG kRateEveryMs = 20000;
 
-volatile LONG g_inflight;
 volatile LONG64 g_area;
 
 // The level id off the transition system's GameState, every call: three reads.
@@ -38,10 +35,9 @@ char g_point_area[64];
 uint64_t g_point_id;
 
 void read_area(void *ctx) {
-    const uint8_t *tray = nullptr, *env = nullptr, *state = nullptr;
+    const uint8_t *env = nullptr, *state = nullptr;
     uint64_t id = 0, phase = 0;
-    if (!(mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
-          mem::copy(tray, &env, sizeof env) && env && mem::copy(env, &state, sizeof state) && state &&
+    if (!(hooks::env(ctx, 0, &env) && mem::copy(env, &state, sizeof state) && state &&
           mem::copy(state + game::kGameStateArea, &id, sizeof id)))
         return;
     InterlockedExchange64(&g_area, static_cast<LONG64>(id));
@@ -103,9 +99,8 @@ void read_pending_string() {
 
 void read_request(void *ctx, long call) {
     read_pending_string();
-    const uint8_t *tray = nullptr, *env = nullptr, *req = nullptr, *text = nullptr;
-    if (!(mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray &&
-          mem::copy(tray + 2 * 8, &env, sizeof env) && env && mem::copy(env, &req, sizeof req) && req &&
+    const uint8_t *env = nullptr, *req = nullptr, *text = nullptr;
+    if (!(hooks::env(ctx, 2 * 8, &env) && mem::copy(env, &req, sizeof req) && req &&
           mem::copy(req + game::kTransitionRequestText, &text, sizeof text)))
         return;
     if (text == g_request_text) return;
@@ -179,7 +174,8 @@ struct System {
     envwatch::Watch *watches;
     int count;
     int slots;
-    SystemFn original = nullptr;
+    // {} for g++, whose -Wmissing-field-initializers counts a member without one in the brace lists below
+    hooks::Hook hook{};  // NOLINT(readability-redundant-member-init)
     volatile LONG calls = 0;
     LONG rate_calls = 0;
     ULONGLONG last_ms = 0, next_diff_ms = 0, rate_ms = 0;
@@ -210,7 +206,7 @@ void on_call(System &s, void *ctx) {
     bool diff_now = false;
     if (n == 1) {
         log::write("transit: %s first call tid %lu, ctx %p", s.key, GetCurrentThreadId(), ctx);
-        runner::log_env_tray(s.key, ctx, s.slots);
+        hooks::log_tray(s.key, ctx, s.slots);
         s.rate_ms = now;
         diff_now = true;
     } else if (now - s.last_ms >= kSilenceMs) {
@@ -222,7 +218,7 @@ void on_call(System &s, void *ctx) {
     if (s.count && (diff_now || now >= s.next_diff_ms)) {
         s.next_diff_ms = now + kDiffEveryMs;
         const uint8_t *tray = nullptr;
-        if (mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) && tray)
+        if (hooks::tray(ctx, &tray))
             for (int i = 0; i < s.count; i++) envwatch::read(s.watches[i], tray, s.slots, s.key, n);
     }
     if (now - s.rate_ms >= kRateEveryMs) {
@@ -235,17 +231,17 @@ void on_call(System &s, void *ctx) {
 
 template <int I>
 void hk(void *a, void *b, void *c, void *d) {
-    InterlockedIncrement(&g_inflight);
     System &s = g_systems[I];
-    if (!lifecycle::stopping) {
+    hooks::Call call(s.hook);
+    if (!call.stopping()) {
         on_call(s, c);
         if (I == 0) {
             read_area(c);
             read_request(c, s.calls);
         }
     }
-    s.original(a, b, c, d);
-    InterlockedDecrement(&g_inflight);
+    call.before_original();
+    s.hook.original<SystemFn>()(a, b, c, d);
 }
 
 constexpr SystemFn kDetours[] = {&hk<0>, &hk<1>, &hk<2>, &hk<3>, &hk<4>, &hk<5>, &hk<6>, &hk<7>, &hk<8>};
@@ -259,24 +255,12 @@ int install(HMODULE exe) {
         System &s = g_systems[i];
         const uintptr_t offset = solve::system(exe, s.name, s.key);
         if (!offset) continue;
-        void *target = reinterpret_cast<uint8_t *>(exe) + offset;
-        MH_STATUS ms =
-            MH_CreateHook(target, reinterpret_cast<void *>(kDetours[i]), reinterpret_cast<void **>(&s.original));
-        if (ms != MH_OK) {
-            log::write("MH_CreateHook %s exe+%lx: %d", s.key, static_cast<unsigned long>(offset), static_cast<int>(ms));
-            continue;
-        }
-        ms = MH_EnableHook(target);
-        log::write("hook on %s exe+%lx: %s", s.key, static_cast<unsigned long>(offset),
-                   ms == MH_OK ? "enabled" : "FAILED");
-        if (ms == MH_OK) hooked++;
+        if (s.hook.install(exe, offset, reinterpret_cast<void *>(kDetours[i]), s.key)) hooked++;
     }
     log::write("transit: %d of %d systems hooked%s", hooked, kSystems,
                lifecycle::stopping ? " (stopped by the unloader)" : "");
     return hooked;
 }
-
-long inflight() { return g_inflight; }
 
 bool point(char *out, size_t cap, uint64_t *id) {
     AcquireSRWLockShared(&g_point_lock);

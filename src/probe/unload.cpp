@@ -2,7 +2,7 @@
 // the last line leaves the DLL mapped, for the same reason as there.
 #include "unload.h"
 
-#include "hooks/runner.h"
+#include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
 
@@ -28,21 +28,7 @@ DWORD WINAPI unloader(LPVOID) {
         CloseHandle(g_boot);
         if (w != WAIT_OBJECT_0) ExitThread(0);
     }
-    if (lifecycle::runner_hooked) {
-        MH_STATUS ms = MH_DisableHook(MH_ALL_HOOKS);
-        for (int t = 0; ms != MH_OK && t < 10; t++) {
-            Sleep(100);
-            ms = MH_DisableHook(MH_ALL_HOOKS);
-        }
-        log::write("unload: runner hook %s", ms == MH_OK ? "restored" : "disable FAILED - staying mapped");
-        if (ms != MH_OK) ExitThread(0);
-        int waited = 0;
-        do {
-            Sleep(200);
-            waited += 200;
-        } while (runner::inflight() != 0);
-        log::write("unload: no call in flight after %d ms", waited);
-    }
+    if (!hooks::release()) ExitThread(0);
     if (lifecycle::minhook_ready) {
         MH_STATUS mu = MH_Uninitialize();
         if (mu != MH_OK && mu != MH_ERROR_NOT_INITIALIZED) {

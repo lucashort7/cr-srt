@@ -49,6 +49,7 @@ add_library(crsrt-core STATIC
   src/motion.cpp
   src/player.cpp
   src/enemies.cpp
+  src/hooks/registry.cpp
   src/hooks/runner.cpp)
 target_include_directories(crsrt-core PUBLIC src)
 target_compile_options(crsrt-core PRIVATE -Wall -Wextra)
@@ -93,6 +94,7 @@ add_executable(crsrt-tests
   tests/fixtures_test.cpp
   tests/memory_test.cpp
   tests/player_test.cpp
+  tests/registry_test.cpp
   tests/snapfile_test.cpp)
 target_include_directories(crsrt-tests PRIVATE tests)
 target_compile_options(crsrt-tests PRIVATE -Wall -Wextra)

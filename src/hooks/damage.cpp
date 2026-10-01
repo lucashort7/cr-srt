@@ -3,13 +3,12 @@
 
 #include "ecs.h"
 #include "game.h"
+#include "hooks/registry.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
 #include "source.h"
-
-#include "MinHook.h"
 
 #include <cstdint>
 
@@ -21,8 +20,7 @@ namespace {
 using TakeDamageFn = float (*)(float *row, const uint8_t *src, void *cfg, uint64_t ent, float amount, double now,
                                void *evt, void *bus, int64_t *tags);
 
-TakeDamageFn g_original;
-volatile LONG g_inflight;
+hooks::Hook g_hook("take_damage");
 SRWLOCK g_lock = SRWLOCK_INIT;  // hits can come from several game threads at once
 
 // Hits logged one line each, then only new archetypes: a damage-over-time effect calls this every frame.
@@ -191,17 +189,13 @@ void note(float *row, const uint8_t *src, uint64_t ent, float amount, float befo
 
 float hk_take_damage(float *row, const uint8_t *src, void *cfg, uint64_t ent, float amount, double now, void *evt,
                      void *bus, int64_t *tags) {
-    InterlockedIncrement(&g_inflight);
-    if (lifecycle::stopping) {
-        float r = g_original(row, src, cfg, ent, amount, now, evt, bus, tags);
-        InterlockedDecrement(&g_inflight);
-        return r;
-    }
+    hooks::Call call(g_hook);
+    const auto original = g_hook.original<TakeDamageFn>();
+    if (call.stopping()) return original(row, src, cfg, ent, amount, now, evt, bus, tags);
     const bool readable = mem::readable(row, game::kHealthRowSize);
     const float before = readable ? row[0] : 0.0f;
-    float r = g_original(row, src, cfg, ent, amount, now, evt, bus, tags);
+    const float r = original(row, src, cfg, ent, amount, now, evt, bus, tags);
     if (readable) note(row, src, ent, amount, before, row[0], reinterpret_cast<const int32_t *>(row)[1], r);
-    InterlockedDecrement(&g_inflight);
     return r;
 }
 
@@ -215,18 +209,7 @@ bool install(HMODULE exe) {
             log::write("damage: prologue differs at byte %d - not hooked (another build?)", static_cast<int>(i));
             return false;
         }
-    MH_STATUS ms =
-        MH_CreateHook(target, reinterpret_cast<void *>(&hk_take_damage), reinterpret_cast<void **>(&g_original));
-    if (ms != MH_OK) {
-        log::write("damage: MH_CreateHook %d", static_cast<int>(ms));
-        return false;
-    }
-    ms = MH_EnableHook(target);
-    log::write("damage: probe hook on exe+%lx %s (trampoline %p)", static_cast<unsigned long>(game::kTakeDamage),
-               ms == MH_OK ? "enabled" : "FAILED", reinterpret_cast<void *>(g_original));
-    return ms == MH_OK;
+    return g_hook.install(target, reinterpret_cast<void *>(&hk_take_damage));
 }
-
-long inflight() { return g_inflight; }
 
 }  // namespace crsrt::damage

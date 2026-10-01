@@ -29,7 +29,4 @@ bool currency(double *source, double *talent_points);
 // that names the machine (names::kMachines). Any thread.
 bool challenge(float *elapsed, uint32_t *machine);
 
-// Threads inside either hook right now; the unloader waits for 0 before unmapping.
-long inflight();
-
 }  // namespace crsrt::uistate

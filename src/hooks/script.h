@@ -13,7 +13,4 @@ namespace crsrt::script {
 // has started. The count hooked; MinHook must be initialised.
 int install(HMODULE exe);
 
-// Threads inside any of these hooks right now; the unloader waits for 0 before unmapping.
-long inflight();
-
 }  // namespace crsrt::script

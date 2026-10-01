@@ -2,12 +2,11 @@
 #include "hooks/present.h"
 
 #include "game.h"
+#include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
 #include "overlay/overlay.h"
-
-#include "MinHook.h"
 
 #include <dxgi.h>
 
@@ -20,10 +19,9 @@ namespace {
 // No stack arguments and no HRESULT back: eax at the wrapper's ret is whatever its last call left.
 using WrapperFn = uint64_t (*)(void *, void *, void *, void *);
 
-WrapperFn g_original;
+hooks::Hook g_hook("present_wrapper");
 HMODULE g_exe;
 volatile LONG g_calls;
-volatile LONG g_inflight;
 
 // What the last log line described, so a line is written only when the swapchain, its size or its format moves.
 void *g_last_sc, *g_last_engine_sc;
@@ -121,16 +119,16 @@ void describe(void *self, LONG n) {
 }
 
 uint64_t hk_wrapper(void *self, void *b, void *c, void *d) {
-    InterlockedIncrement(&g_inflight);
+    hooks::Call call(g_hook);
     LONG n = InterlockedIncrement(&g_calls);
-    if (!lifecycle::stopping) {
+    if (!call.stopping()) {
         describe(self, n);
         if (n % 3600 == 0) log::write("present: %ld calls", static_cast<long>(n));  // ~every minute: still alive
     }
     overlay::on_wrapper(swapchain_of(self), device(), direct_queue());  // also while stopping: the restore is here
-    uint64_t r = g_original(self, b, c, d);
+    call.before_original();
+    const uint64_t r = g_hook.original<WrapperFn>()(self, b, c, d);
     if (n == 1) log::write("present: first call back, rax %p", reinterpret_cast<void *>(r));
-    InterlockedDecrement(&g_inflight);
     return r;
 }
 
@@ -148,19 +146,7 @@ bool install(HMODULE exe) {
             log::write("capture: prologue differs at byte %d - not hooked", static_cast<int>(i));
             return false;
         }
-    MH_STATUS ms = MH_CreateHook(const_cast<uint8_t *>(wrapper), reinterpret_cast<void *>(&hk_wrapper),
-                                 reinterpret_cast<void **>(&g_original));
-    if (ms != MH_OK) {
-        log::write("capture: MH_CreateHook %d", static_cast<int>(ms));
-        g_original = nullptr;
-        return false;
-    }
-    ms = MH_EnableHook(const_cast<uint8_t *>(wrapper));
-    log::write("capture: hook on exe+%lx %s (trampoline %p)", static_cast<unsigned long>(game::kPresentWrapper),
-               ms == MH_OK ? "enabled" : "FAILED", reinterpret_cast<void *>(g_original));
-    return ms == MH_OK;
+    return g_hook.install(const_cast<uint8_t *>(wrapper), reinterpret_cast<void *>(&hk_wrapper));
 }
-
-long inflight() { return g_inflight; }
 
 }  // namespace crsrt::present

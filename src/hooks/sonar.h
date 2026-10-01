@@ -25,7 +25,4 @@ bool install(HMODULE exe, uintptr_t sonar_offset);
 // The district as the hook last resolved it. Any thread.
 void district(District &out);
 
-// Threads inside the hook right now; the unloader waits for 0 before unmapping.
-long inflight();
-
 }  // namespace crsrt::sonar

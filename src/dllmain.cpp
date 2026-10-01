@@ -51,22 +51,20 @@ DWORD WINAPI boot_main(LPVOID) {
         if (!lifecycle::stopping) lifecycle::runner_hooked = runner::install(exe, o.runner);
         // the walk on its own thread, off what the runner publishes; nothing runs on the runner's call for it
         if (!lifecycle::stopping && lifecycle::runner_hooked) enemies::start();
-        if (!lifecycle::stopping && o.sonar) lifecycle::sonar_hooked = sonar::install(exe, o.sonar);
-        if (!lifecycle::stopping && o.hudvis) lifecycle::uistate_hooked = uistate::install(exe, o.hudvis);
-        if (!lifecycle::stopping && o.pausedet && uistate::install_pause(exe, o.pausedet))
-            lifecycle::uistate_hooked = true;
-        if (!lifecycle::stopping && o.challenge && uistate::install_challenge(exe, o.challenge))
-            lifecycle::uistate_hooked = true;
+        if (!lifecycle::stopping && o.sonar) sonar::install(exe, o.sonar);
+        if (!lifecycle::stopping && o.hudvis) uistate::install(exe, o.hudvis);
+        if (!lifecycle::stopping && o.pausedet) uistate::install_pause(exe, o.pausedet);
+        if (!lifecycle::stopping && o.challenge) uistate::install_challenge(exe, o.challenge);
         // the probe after the runner, whose world it reads
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
-            lifecycle::damage_hooked = damage::install(exe);
+            damage::install(exe);
     }
     if (!lifecycle::stopping) lifecycle::present_hooked = present::install(exe);
     // the taxi probe last: nine solves the overlay need not wait for
     if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"transit", 1, log::path(L".ini").c_str()))
-        lifecycle::transit_hooked = transit::install(exe) > 0;
+        transit::install(exe);
     if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"script", 1, log::path(L".ini").c_str()))
-        lifecycle::script_hooked = script::install(exe) > 0;
+        script::install(exe);
     return 0;
 }
 

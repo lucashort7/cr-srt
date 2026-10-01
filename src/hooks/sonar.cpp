@@ -2,12 +2,10 @@
 #include "hooks/sonar.h"
 
 #include "game.h"
-#include "hooks/runner.h"
+#include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "memory.h"
-
-#include "MinHook.h"
 
 #include <algorithm>
 #include <cstring>
@@ -23,9 +21,8 @@ constexpr uint32_t kMaxDistricts = 16;
 constexpr uint32_t kMaxCosts = 32;
 constexpr uint32_t kMaxActive = 8;
 
-SonarFn g_original;
+hooks::Hook g_hook("sonar");
 volatile LONG g_calls;
-volatile LONG g_inflight;
 
 // Sonar thread -> render thread.
 SRWLOCK g_lock = SRWLOCK_INIT;
@@ -147,7 +144,7 @@ void short_of(int why, const void *ctx, LONG n) {
 
 void look(void *ctx, LONG n) {
     const uint8_t *tray = nullptr;
-    if (!field(static_cast<const uint8_t *>(ctx), game::kEnvTray, tray)) {
+    if (!hooks::tray(ctx, &tray)) {
         short_of(1, ctx, n);
         return;
     }
@@ -172,33 +169,24 @@ void look(void *ctx, LONG n) {
 }
 
 void hk_sonar(void *a, void *b, void *c, void *d) {
-    InterlockedIncrement(&g_inflight);
+    hooks::Call call(g_hook);
     LONG n = InterlockedIncrement(&g_calls);
-    if (!lifecycle::stopping) {
+    if (!call.stopping()) {
         if (n == 1) {
             log::write("sonar: first call tid %lu, ctx %p", GetCurrentThreadId(), c);
-            runner::log_env_tray("sonar", c, game::kSonarSlots);
+            hooks::log_tray("sonar", c, game::kSonarSlots);
         }
         if (n % kEvery == 1) look(c, n);
         if (n % 1800 == 0) log::write("sonar: %ld calls", static_cast<long>(n));  // ~every minute: still called
     }
-    g_original(a, b, c, d);
-    InterlockedDecrement(&g_inflight);
+    call.before_original();
+    g_hook.original<SonarFn>()(a, b, c, d);
 }
 
 }  // namespace
 
 bool install(HMODULE exe, uintptr_t sonar_offset) {
-    void *target = reinterpret_cast<uint8_t *>(exe) + sonar_offset;
-    MH_STATUS ms = MH_CreateHook(target, reinterpret_cast<void *>(&hk_sonar), reinterpret_cast<void **>(&g_original));
-    if (ms != MH_OK) {
-        log::write("MH_CreateHook sonar exe+%lx: %d", static_cast<unsigned long>(sonar_offset), static_cast<int>(ms));
-        return false;
-    }
-    ms = MH_EnableHook(target);
-    log::write("hook on sonar exe+%lx: %s (trampoline %p)", static_cast<unsigned long>(sonar_offset),
-               ms == MH_OK ? "enabled" : "FAILED", reinterpret_cast<void *>(g_original));
-    return ms == MH_OK;
+    return g_hook.install(exe, sonar_offset, reinterpret_cast<void *>(&hk_sonar));
 }
 
 void district(District &out) {
@@ -206,7 +194,5 @@ void district(District &out) {
     out = g_district;
     ReleaseSRWLockShared(&g_lock);
 }
-
-long inflight() { return g_inflight; }
 
 }  // namespace crsrt::sonar

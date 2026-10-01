@@ -16,9 +16,6 @@ namespace crsrt::transit {
 // initialised.
 int install(HMODULE exe);
 
-// Threads inside any of these hooks right now; the unloader waits for 0 before unmapping.
-long inflight();
-
 // GameState+0x90: the 64-bit id of the level loaded, a zone, a building or a sequence, as the transition system last
 // ran (2026-10-01: ZONE_HISS 01c080962a7d636d, a tower inside it 184dcbbd71e5463d, unchanged across its floors). 0
 // before the first call. Any thread.

@@ -10,13 +10,8 @@ inline std::atomic<bool> stopping{false};
 
 // Set by the boot (dllmain.cpp), read by the unloader once the boot thread has ended.
 inline std::atomic<bool> minhook_ready{false};
-inline std::atomic<bool> runner_hooked{false};
-inline std::atomic<bool> present_hooked{false};
-inline std::atomic<bool> damage_hooked{false};   // the probe, only with [probe] damage=1
-inline std::atomic<bool> sonar_hooked{false};    // the district; absent when its solve failed
-inline std::atomic<bool> uistate_hooked{false};  // the state probe; absent when its solve failed
-inline std::atomic<bool> transit_hooked{false};
-inline std::atomic<bool> script_hooked{false};  // the taxi probe's script functions, off with [probe] script=0  // the
-                                                // taxi probe, off with [probe] transit=0
+// The hooks themselves are in the registry (hooks/registry.h); these two decide what else the unloader undoes.
+inline std::atomic<bool> runner_hooked{false};   // the walk thread runs off it
+inline std::atomic<bool> present_hooked{false};  // the overlay is restored through it
 
 }  // namespace crsrt::lifecycle

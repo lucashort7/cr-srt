@@ -3,6 +3,7 @@
 
 #include "ecs.h"
 #include "game.h"
+#include "hooks/registry.h"
 #include "hooks/transit.h"
 #include "lifecycle.h"
 #include "log.h"
@@ -11,8 +12,6 @@
 #include "sequence.h"
 #include "solve.h"
 #include "source.h"
-
-#include "MinHook.h"
 
 #include <array>
 #include <cstdint>
@@ -104,15 +103,14 @@ void entity_place(const uint8_t *L, uint64_t handle, char *out, size_t cap) {
         ecs::log_type_list(arch, list.data(), static_cast<uint32_t>(list.size()));
 }
 
-volatile LONG g_inflight;
-
 // A call that names the level it switches to in arg 2, read on every call, not only the logged ones: the
 // *_switch_to_level family by a path, zone_transition(from, to) by the level's name (sequence.h).
 enum class Seq : uint8_t { none, names };
 
 struct Function {
     const char *name;
-    ScriptFn original = nullptr;
+    // {} for g++, whose -Wmissing-field-initializers counts a member without one in the brace lists below
+    hooks::Hook hook{};     // NOLINT(readability-redundant-member-init)
     LONG logged = kLogged;  // calls logged in full, then one per kEvery
     Seq seq = Seq::none;
     volatile LONG calls = 0;
@@ -235,16 +233,18 @@ void track(const Function &f, void *state) {
 
 template <int I>
 int hk(void *state) {
-    InterlockedIncrement(&g_inflight);
     Function &f = g_functions[I];
-    const LONG n = InterlockedIncrement(&f.calls);
-    if (!lifecycle::stopping && (n <= f.logged || n % (f.logged < kLogged ? 10000 : kEvery) == 0))
-        log_call(f, state, n);
-    if (!lifecycle::stopping) track(f, state);
     // A Luau error is a C++ throw (luaD_throw, exe+2c43a10) that would unwind past a decrement after the call and leave
-    // the unloader waiting forever: the count drops first and the original runs as a tail call, no frame of ours left.
-    const ScriptFn original = f.original;
-    InterlockedDecrement(&g_inflight);
+    // the unloader waiting forever: the Call closes first and the original runs as a tail call, no frame of ours left.
+    ScriptFn original = nullptr;
+    {
+        hooks::Call call(f.hook);
+        const LONG n = InterlockedIncrement(&f.calls);
+        if (!call.stopping() && (n <= f.logged || n % (f.logged < kLogged ? 10000 : kEvery) == 0))
+            log_call(f, state, n);
+        if (!call.stopping()) track(f, state);
+        original = f.hook.original<ScriptFn>();
+    }
     [[gnu::musttail]] return original(state);
 }
 
@@ -301,24 +301,11 @@ int install(HMODULE exe) {
         Function &f = g_functions[i];
         const uintptr_t offset = solve::script_function(exe, f.name);
         if (!offset) continue;
-        void *target = reinterpret_cast<uint8_t *>(exe) + offset;
-        MH_STATUS ms =
-            MH_CreateHook(target, reinterpret_cast<void *>(kDetours[i]), reinterpret_cast<void **>(&f.original));
-        if (ms != MH_OK) {
-            log::write("MH_CreateHook script %s exe+%lx: %d", f.name, static_cast<unsigned long>(offset),
-                       static_cast<int>(ms));
-            continue;
-        }
-        ms = MH_EnableHook(target);
-        log::write("hook on script %s exe+%lx: %s", f.name, static_cast<unsigned long>(offset),
-                   ms == MH_OK ? "enabled" : "FAILED");
-        if (ms == MH_OK) hooked++;
+        if (f.hook.install(exe, offset, reinterpret_cast<void *>(kDetours[i]), f.name)) hooked++;
     }
     log::write("script: %d of %d functions hooked%s", hooked, kFunctions,
                lifecycle::stopping ? " (stopped by the unloader)" : "");
     return hooked;
 }
-
-long inflight() { return g_inflight; }
 
 }  // namespace crsrt::script
