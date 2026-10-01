@@ -10,21 +10,21 @@ using namespace crsrt;
 
 namespace {
 
-constexpr char kFixture[] = "fixtures/snap-20260928-125351.bin";
+constexpr char kFixture[] = "fixtures/snap-20260928-124754.bin";
 
 uint64_t type_entry(uint64_t world, int64_t index) { return world + 8 + (index + game::kTypeEntryBias) * 32; }
 uint64_t offsets_entry(uint64_t world, int64_t index) { return world + 8 + index * 32 + game::kOffsetsBase; }
 
 }  // namespace
 
-// The counts a Python read of the same file gives: 1134 archetypes, 23 chunks with Health, each read whole. A chunk
+// The counts a Python read of the same file gives: 1146 archetypes, 33 chunks with Health, each read whole. A chunk
 // without Health can still be answered: a blob runs 0x400 bytes past its last column, into whatever follows it.
 TEST(the_fixture_loads_whole) {
     snapfile::Snapshot s;
     CHECK(s.load(kFixture));
     CHECK(s.world() != 0);
-    CHECK(s.calls() == 302);
-    CHECK(s.archetypes().size() == 1134);
+    CHECK(s.calls() == 129);
+    CHECK(s.archetypes().size() == 1146);
     int chunks = 0, unread = 0;
     std::vector<uint8_t> bytes;
     for (const auto &a : s.archetypes()) {
@@ -33,7 +33,7 @@ TEST(the_fixture_loads_whole) {
         bytes.resize(a.blob);
         if (!s.copy(a.chunk, bytes.data(), a.blob)) unread++;
     }
-    CHECK(chunks == 23);
+    CHECK(chunks == 33);
     CHECK(unread == 0);
 }
 
@@ -57,8 +57,8 @@ TEST(a_chunk_slot_reads_the_chunk_recorded) {
     CHECK(wrong == 0);
 }
 
-// The walk read an archetype's offsets through its type entry's +0x10, ecs.cpp through its offsets entry's +0: one
-// pointer, measured on all three CRSNAP03 files on 2026-10-01 (3428 of 3428 archetypes).
+// The walk read an archetype's offsets through its type entry's +0x10, ecs.cpp through its offsets entry's +0, and the
+// two are one address: kOffsetsBase is kTypeEntryBias * 32 + 0x10. This holds game.h's constants to that.
 TEST(both_routes_to_the_offsets_name_one_array) {
     snapfile::Snapshot s;
     CHECK(s.load(kFixture));

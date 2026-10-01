@@ -4,9 +4,9 @@
 #include <cstdio>
 #include <cstring>
 
-// cr-probe's F9 snapshot of 2026-09-28 12:53:51: 1134 archetypes, 23 chunks with Health.
+// cr-probe's F9 snapshot of 2026-09-28 12:47:54: 1146 archetypes, 33 chunks with Health.
 TEST(the_snapshot_fixture_is_a_crsnap03) {
-    FILE *f = std::fopen("fixtures/snap-20260928-125351.bin", "rb");
+    FILE *f = std::fopen("fixtures/snap-20260928-124754.bin", "rb");
     CHECK(f != nullptr);
     if (!f) return;
     char magic[8] = {};
