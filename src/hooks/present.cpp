@@ -11,6 +11,8 @@
 
 #include <dxgi.h>
 
+#include <cstdio>
+
 namespace crsrt::present {
 
 namespace {
