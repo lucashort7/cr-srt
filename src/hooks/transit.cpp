@@ -52,8 +52,8 @@ void read_area(void *ctx) {
         g_point_id = id;
         g_pending_area[0] = 0;
         ReleaseSRWLockExclusive(&g_point_lock);
-        log::write("transit: fast travel landed in %s, level %016llx", g_point_area,
-                   static_cast<unsigned long long>(id));
+        log::write("transit: fast travel landed in %s, level %08lx%08lx", g_point_area,
+                   static_cast<unsigned long>(id >> 32), static_cast<unsigned long>(id & 0xffffffff));
     }
 }
 
