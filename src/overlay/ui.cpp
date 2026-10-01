@@ -66,11 +66,20 @@ bool g_stale_said;
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
 // [areas] <id's first 8 hex digits>=<label>: the name of a level the sonar gives no district for, as Lucas writes it.
-// g_area_label is the label read for g_area_labelled; g_zone_area the level id held kAreaSettle seconds with a
+// g_area_label is the label read for g_area_labelled; an id counts as a zone's once held kAreaSettle seconds with a
 // district, the zone's: the id changes in the same second the sonar loses the district, while the shown zone lingers.
 constexpr float kAreaSettle = 2.0f;
-uint64_t g_area_labelled, g_zone_area, g_area_last;
+// g_zone_areas every id seen settled with a district since the inject: a zone's id comes back before its district.
+constexpr int kZoneAreas = 16;
+uint64_t g_area_labelled, g_zone_areas[kZoneAreas], g_area_last;
+int g_zone_area_count;
 float g_area_held;
+
+bool zone_area(uint64_t area) {
+    for (int i = 0; i < g_zone_area_count; i++)
+        if (g_zone_areas[i] == area) return true;
+    return false;
+}
 char g_area_label[32];
 
 enemies::List g_list;  // the render thread's copy, one per draw
@@ -294,12 +303,14 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     const uint64_t area = transit::area();
     if (area != g_area_last) g_area_last = area, g_area_held = 0.0f;
     g_area_held += dt;
-    if (g_shown.has && area && g_area_held >= kAreaSettle) g_zone_area = area;
+    if (g_shown.has && area && g_area_held >= kAreaSettle && !zone_area(area) && g_zone_area_count < kZoneAreas)
+        g_zone_areas[g_zone_area_count++] = area;
+    const bool in_area = !g_shown.has && area && g_area_held >= kAreaSettle && !zone_area(area);
     if (sequence::current(seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
-    else if (!g_shown.has && area && area != g_zone_area && g_area_label[0] && area == g_area_labelled)
+    else if (in_area && g_area_label[0] && area == g_area_labelled)
         std::snprintf(s, sizeof s, "section: %s", g_area_label);
-    else if (!g_shown.has && area && area != g_zone_area)
+    else if (in_area)
         std::snprintf(s, sizeof s, "section: %08lx", static_cast<unsigned long>(area >> 32));
     else
         std::snprintf(s, sizeof s, "section: --");
