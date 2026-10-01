@@ -12,6 +12,8 @@
 #include "MinHook.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <iterator>
 
 namespace crsrt::transit {
@@ -49,14 +51,31 @@ void read_request(void *ctx, long call) {
     if (text == g_request_text) return;
     g_request_text = text;
     if (!text) return;
-    char buf[97] = {};
-    if (!mem::copy(text, buf, 96)) {
+    uint8_t raw[32] = {};
+    if (!mem::copy(text, raw, sizeof raw)) {
         log::write("transit: request text at %p unreadable (call %ld)", text, call);
         return;
     }
-    for (char &c : buf)
-        if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
-    log::write("transit: request text at %p: \"%s\" (call %ld)", text, buf, call);
+    char hex[sizeof raw * 2 + 1] = {};
+    for (size_t i = 0; i < sizeof raw; i++) std::snprintf(hex + i * 2, 3, "%02x", raw[i]);
+    log::write("transit: request +38 -> %p: %s (call %ld)", text, hex, call);
+    // a string_view is {const char *, size_t}: when the first qword reads as one, the chars behind it
+    const char *chars = nullptr;
+    uint64_t len = 0;
+    std::memcpy(&chars, raw, 8);
+    std::memcpy(&len, raw + 8, 8);
+    char buf[97] = {};
+    if (chars && len < 96 && mem::copy(chars, buf, len)) {
+        for (char &c : buf)
+            if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
+        log::write("transit: request string (%lu): \"%s\"", static_cast<unsigned long>(len), buf);
+    }
+    uint8_t own[0x50] = {};
+    if (mem::copy(req + 0x30, own, sizeof own)) {
+        char h2[sizeof own * 2 + 1] = {};
+        for (size_t i = 0; i < sizeof own; i++) std::snprintf(h2 + i * 2, 3, "%02x", own[i]);
+        log::write("transit: request +30..+80: %s", h2);
+    }
 }
 
 // Each env lives in one table only: TimelineCinematicsControl is uistate's (the hud_visibility tray), the
