@@ -51,24 +51,30 @@ void read_request(void *ctx, long call) {
     if (text == g_request_text) return;
     g_request_text = text;
     if (!text) return;
-    uint8_t raw[32] = {};
+    uint8_t raw[0x40] = {};
     if (!mem::copy(text, raw, sizeof raw)) {
-        log::write("transit: request text at %p unreadable (call %ld)", text, call);
+        log::write("transit: request +38 -> %p unreadable (call %ld)", text, call);
         return;
     }
     char hex[sizeof raw * 2 + 1] = {};
     for (size_t i = 0; i < sizeof raw; i++) std::snprintf(hex + i * 2, 3, "%02x", raw[i]);
     log::write("transit: request +38 -> %p: %s (call %ld)", text, hex, call);
-    // a string_view is {const char *, size_t}: when the first qword reads as one, the chars behind it
-    const char *chars = nullptr;
-    uint64_t len = 0;
-    std::memcpy(&chars, raw, 8);
-    std::memcpy(&len, raw + 8, 8);
-    char buf[97] = {};
-    if (chars && len < 96 && mem::copy(chars, buf, len)) {
-        for (char &c : buf)
-            if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
-        log::write("transit: request string (%lu): \"%s\"", static_cast<unsigned long>(len), buf);
+    // the object's pointers, each followed while it is alive: the one at +0x18 read as a UI asset path once
+    for (size_t off = 0; off + 8 <= sizeof raw; off += 8) {
+        const uint8_t *q = nullptr;
+        std::memcpy(&q, raw + off, 8);
+        char buf[97] = {};
+        if (reinterpret_cast<uintptr_t>(q) < 0x10000 || !mem::copy(q, buf, 96)) continue;
+        int printable = 0;
+        for (char &c : buf) {
+            if (c == 0) break;
+            if (c < 0x20 || c > 0x7e)
+                c = '.';
+            else
+                printable++;
+        }
+        if (printable >= 4)
+            log::write("transit: request obj+%lx -> %p: \"%s\"", static_cast<unsigned long>(off), q, buf);
     }
     uint8_t own[0x50] = {};
     if (mem::copy(req + 0x30, own, sizeof own)) {
