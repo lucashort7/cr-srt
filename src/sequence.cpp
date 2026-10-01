@@ -77,8 +77,10 @@ bool name_for(uint64_t id, char *out, size_t cap) {
         static const std::wstring ini = log::path(L".ini");
         wchar_t key[16], value[kNameLen];
         std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(id >> 32));
-        for (size_t i = 0; i < std::size(value); i++)
-            if ((value[i] = static_cast<wchar_t>(bound[i])) == 0) break;
+        for (size_t i = 0; i < std::size(value); i++) {
+            value[i] = static_cast<wchar_t>(bound[i]);
+            if (!bound[i]) break;
+        }
         WritePrivateProfileStringW(L"areas", key, value, ini.c_str());
     }
     return found;
