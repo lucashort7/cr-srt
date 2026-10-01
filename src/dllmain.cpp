@@ -52,8 +52,6 @@ DWORD WINAPI boot_main(LPVOID) {
         player::set_get_player(reinterpret_cast<player::GetPlayerFn>(const_cast<uint8_t *>(p)));
         ecs::set_find_type(o.find_type);
         if (!lifecycle::stopping) lifecycle::runner_hooked = runner::install(exe, o.runner);
-        // the walk on its own thread, off what the runner publishes; nothing runs on the runner's call for it
-        if (!lifecycle::stopping && lifecycle::runner_hooked) enemies::start();
         if (!lifecycle::stopping && o.sonar) sonar::install(exe, o.sonar);
         if (!lifecycle::stopping && o.hudvis) uistate::install(exe, o.hudvis);
         if (!lifecycle::stopping && o.pausedet) uistate::install_pause(exe, o.pausedet);
@@ -62,6 +60,9 @@ DWORD WINAPI boot_main(LPVOID) {
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             damage::install(exe);
     }
+    // The walk thread, runner or not: it walks only what the runner publishes and idles without it, and it is where the
+    // ini's [areas] is read and written for whereabouts, which the overlay draws whatever hooked.
+    if (!lifecycle::stopping) enemies::start();
     if (!lifecycle::stopping) lifecycle::present_hooked = present::install(exe);
     // the taxi probe last: nine solves the overlay need not wait for
     if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"transit", 1, log::path(L".ini").c_str()))

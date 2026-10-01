@@ -125,6 +125,16 @@ TEST(a_name_whose_level_never_moves_is_forgotten) {
     CHECK(is(play("", 0.5, in).section, "184dcbbd"));
 }
 
+// The frame read its clock before the call that named the level read its own: the name is not stale.
+TEST(a_name_stamped_after_the_frames_clock_still_binds) {
+    whereabouts::reset();
+    whereabouts::level_named("taxi_puzzle", kHiss, 5016);
+    whereabouts::Inputs in;
+    in.level = kTower;
+    in.now_ms = 5000;
+    CHECK(is(play("", 0.5, in).section, "taxi_puzzle"));
+}
+
 TEST(a_fast_travel_names_the_area_while_its_level_holds) {
     whereabouts::reset();
     whereabouts::Inputs in;

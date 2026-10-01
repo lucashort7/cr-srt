@@ -85,7 +85,8 @@ void tick(const sonar::District &d, double run) {
 
 // The pending name onto `level` once the level is no longer the one it was named from.
 void bind(uint64_t level, uint64_t now_ms) {
-    if (g_has_pending && now_ms - g_pending_at > kPendingMs) g_has_pending = false;
+    // the two times are read outside the lock, so a name can carry a later stamp than the frame that sees it
+    if (g_has_pending && now_ms > g_pending_at && now_ms - g_pending_at > kPendingMs) g_has_pending = false;
     if (!g_has_pending || !level || level == g_pending_from) return;
     int i = 0;
     while (i < g_count && g_bound[i].level != level) i++;

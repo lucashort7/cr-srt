@@ -627,6 +627,8 @@ DWORD WINAPI walker(LPVOID) {
             g_period_at = now;
         }
     }
+    static const std::wstring ini = log::path(L".ini");
+    whereabouts::flush(ini.c_str());  // a name bound in the last second
     log::write("enemies: walk thread ending");
     return 0;
 }

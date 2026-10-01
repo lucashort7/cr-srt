@@ -8,6 +8,7 @@
 #include "lifecycle.h"
 #include "log.h"
 #include "overlay/overlay.h"
+#include "whereabouts.h"
 
 #include "MinHook.h"
 
@@ -39,6 +40,8 @@ DWORD WINAPI unloader(LPVOID) {
     if (lifecycle::present_hooked && !overlay::unload()) ExitThread(0);
 
     if (!hooks::release()) ExitThread(0);
+    // a name the script hook bound after the walk thread's last flush: nothing binds one any more
+    whereabouts::flush(log::path(L".ini").c_str());
     if (!walk_stopped) {
         log::write("unload: hooks and overlay gone, the walk thread still running - staying mapped");
         ExitThread(0);
