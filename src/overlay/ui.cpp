@@ -345,7 +345,14 @@ void player_section(Pen &pen, const player::State &p, bool stale) {
     resource_line(pen, "hp", health, hp, static_cast<float>(p.max), true, upgrades, p.health_upgrades,
                   health && p.dead ? " [dead]" : "");
     resource_line(pen, "pw", !stale && p.has_power, p.power, p.power_max, true, upgrades, p.power_upgrades, "");
-    resource_line(pen, "cr", !stale && p.has_power, p.command, p.command_max, false, false, 0, "");
+    // Command in charges: a tier of enemy costs 1, 2 or 4 of them, so the fill in charges is what the player reads.
+    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
+    if (stale || !p.has_power || !(p.command >= 0.0f) || !(p.command_charge > 0.0f) || p.command_charges <= 0)
+        std::snprintf(s, sizeof s, "cr: -- / -- [--/--]");
+    else
+        std::snprintf(s, sizeof s, "cr: %ld / %ld [%.2f/%d]", std::lround(p.command), std::lround(p.command_max),
+                      p.command / p.command_charge, static_cast<int>(p.command_charges));
+    line(pen, s);
     if (stale || !p.has_progression)
         std::snprintf(s, sizeof s, "bp: --   as: --   ab: --");
     else

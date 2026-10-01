@@ -69,6 +69,11 @@ inline constexpr uintptr_t kPowerMax = 0x8;
 inline constexpr uintptr_t kPower = 0xc;
 inline constexpr uintptr_t kCommandFraction = 0xd0;
 inline constexpr uintptr_t kCommandMax = 0x214;
+// Command is spent in charges, a tier of enemy costing 1, 2 or 4 (Lucas, 2026-10-01): +0x220 is one charge's size
+// (1000.0) and +0x224 the number of charges (int 4), 4 × 1000 = the max. Power's record carries 1000.0 and 1 at the
+// same places, meaning unread.
+inline constexpr uintptr_t kCommandChargeSize = 0x220;
+inline constexpr uintptr_t kCommandCharges = 0x224;
 // heron::player_progression::component::PlayerProgression, 0x2c bytes: three ints each followed by a cap and the
 // value over the cap as a float. +0 Build Power (10), +0x14 Aberrant Strength (143), +0x20 Ability Strength (6);
 // the caps (78, 180, 12) are unread by the HUD.
