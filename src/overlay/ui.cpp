@@ -126,14 +126,13 @@ void read_ini(long frame) {
     g_rows = std::min(g_rows, enemies::kMaxRows);
     g_ally_rows = static_cast<int>(GetPrivateProfileIntW(L"allies", L"rows", 4, ini.c_str()));
     g_ally_rows = std::min(g_ally_rows, enemies::kMaxRows);
+    // the label for the level now, every pass: a line added to the ini while the player stands in the level is seen
     const uint64_t area = transit::area();
-    if (area != g_area_labelled) {
-        wchar_t key[16], label[32];
-        std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(area >> 32));
-        GetPrivateProfileStringW(L"areas", key, L"", label, static_cast<DWORD>(std::size(label)), ini.c_str());
-        std::snprintf(g_area_label, sizeof g_area_label, "%ls", label);
-        g_area_labelled = area;
-    }
+    wchar_t key[16], label[32];
+    std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(area >> 32));
+    GetPrivateProfileStringW(L"areas", key, L"", label, static_cast<DWORD>(std::size(label)), ini.c_str());
+    std::snprintf(g_area_label, sizeof g_area_label, "%ls", label);
+    g_area_labelled = area;
 }
 
 // "hiss", or the hash's first four digits.
