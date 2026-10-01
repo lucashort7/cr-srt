@@ -59,16 +59,17 @@ inline constexpr uint32_t kHealthRowSize = 0x38;
 // The immediate inside get_player: heron::resourcing::component::ResourcingData, the player's Power and Command
 // Resource (2026-10-01, Stats & Effects 2240 and 4000 against the chunk). A record per resource: Power's at +0, its
 // max at +8 and the current value at +0xc, both floats (2240 → 0 over a held Spike, back at ~35/s); Command's at
-// +0x210 with its max at +0x214 (the 4000 at +0x218 and +0x21c are copies of it, not a current value); the charge is
-// a 0..1 fraction at +0xd0, the only lane that moved when the ultimate was used (0.676 → 0.006, then ~0.013 a hit).
-// The column is 0x350 bytes.
+// +0x210 with its max at +0x214 and the current value at +0x21c, a float that moves a whole charge at a time (0 → 1000
+// → 2000 as charges came, 3000 → 1000 on a two-charge command) and is what the Main Stats screen draws. +0xd0 is a
+// 0..1 that eases back to 1.0 over ~10 s after every change of +0x21c, an animation value: it read as the charge for an
+// afternoon (watch of 13:5x, 2026-10-01). The column is 0x350 bytes.
 inline constexpr uint32_t kPlayerTag = 0x59f99e92;
 inline constexpr uint32_t kResourcing = kPlayerTag;
 inline constexpr uint32_t kResourcingRowSize = 0x228;  // the bytes read, through Command's record
 inline constexpr uintptr_t kPowerMax = 0x8;
 inline constexpr uintptr_t kPower = 0xc;
-inline constexpr uintptr_t kCommandFraction = 0xd0;
 inline constexpr uintptr_t kCommandMax = 0x214;
+inline constexpr uintptr_t kCommand = 0x21c;
 // Command is spent in charges, a tier of enemy costing 1, 2 or 4 (Lucas, 2026-10-01): +0x220 is one charge's size
 // (1000.0) and +0x224 the number of charges (int 4), 4 × 1000 = the max. Power's record carries 1000.0 and 1 at the
 // same places, meaning unread.

@@ -33,7 +33,7 @@ struct State {
     // each has_* false when its row did not resolve. The floats are the game's, unchecked beyond being finite.
     bool has_power = false, has_progression = false, has_upgrades = false;
     float power = 0.0f, power_max = 0.0f;                // ResourcingData +0xc, +0x8
-    float command = 0.0f, command_max = 0.0f;            // ResourcingData +0xd0 (a fraction) times +0x214
+    float command = 0.0f, command_max = 0.0f;            // ResourcingData +0x21c, +0x214
     float command_charge = 0.0f;                         // ResourcingData +0x220, one charge's size
     int32_t command_charges = 0;                         // ResourcingData +0x224, how many charges the max holds
     int32_t build_power = 0, aberrant = 0, ability = 0;  // PlayerProgression +0, +0x14, +0x20

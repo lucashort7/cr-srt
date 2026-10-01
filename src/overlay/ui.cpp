@@ -350,8 +350,8 @@ void player_section(Pen &pen, const player::State &p, bool stale) {
     if (stale || !p.has_power || !(p.command >= 0.0f) || !(p.command_charge > 0.0f) || p.command_charges <= 0)
         std::snprintf(s, sizeof s, "cr: -- / -- [--/--]");
     else
-        std::snprintf(s, sizeof s, "cr: %ld / %ld [%.2f/%d]", std::lround(p.command), std::lround(p.command_max),
-                      p.command / p.command_charge, static_cast<int>(p.command_charges));
+        std::snprintf(s, sizeof s, "cr: %ld / %ld [%ld/%d]", std::lround(p.command), std::lround(p.command_max),
+                      std::lround(p.command / p.command_charge), static_cast<int>(p.command_charges));
     line(pen, s);
     if (stale || !p.has_progression)
         std::snprintf(s, sizeof s, "bp: --   as: --   ab: --");

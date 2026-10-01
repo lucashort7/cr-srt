@@ -219,7 +219,7 @@ void read(void *world, State &out) {
         out.power = at<float>(row + game::kPower);
         out.power_max = at<float>(row + game::kPowerMax);
         out.command_max = at<float>(row + game::kCommandMax);
-        out.command = at<float>(row + game::kCommandFraction) * out.command_max;
+        out.command = at<float>(row + game::kCommand);
         out.command_charge = at<float>(row + game::kCommandChargeSize);
         out.command_charges = at<int32_t>(row + game::kCommandCharges);
         out.has_power = std::isfinite(out.power) && std::isfinite(out.power_max) && std::isfinite(out.command) &&
