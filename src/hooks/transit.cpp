@@ -59,22 +59,16 @@ void read_request(void *ctx, long call) {
     char hex[sizeof raw * 2 + 1] = {};
     for (size_t i = 0; i < sizeof raw; i++) std::snprintf(hex + i * 2, 3, "%02x", raw[i]);
     log::write("transit: request +38 -> %p: %s (call %ld)", text, hex, call);
-    // the object's pointers, each followed while it is alive: the one at +0x18 read as a UI asset path once
-    for (size_t off = 0; off + 8 <= sizeof raw; off += 8) {
-        const uint8_t *q = nullptr;
-        std::memcpy(&q, raw + off, 8);
-        char buf[97] = {};
-        if (reinterpret_cast<uintptr_t>(q) < 0x10000 || !mem::copy(q, buf, 96)) continue;
-        int printable = 0;
-        for (char &c : buf) {
-            if (c == 0) break;
-            if (c < 0x20 || c > 0x7e)
-                c = '.';
-            else
-                printable++;
-        }
-        if (printable >= 4)
-            log::write("transit: request obj+%lx -> %p: \"%s\"", static_cast<unsigned long>(off), q, buf);
+    // {u64, u32 hash, u32, u32 flags, u32 len, const char *}: the destination's load-screen image path (2026-10-01)
+    uint32_t len = 0;
+    const char *chars = nullptr;
+    std::memcpy(&len, raw + 0x14, 4);
+    std::memcpy(&chars, raw + 0x18, 8);
+    char buf[257] = {};
+    if (chars && len < sizeof buf && mem::copy(chars, buf, len)) {
+        for (char &c : buf)
+            if (c != 0 && (c < 0x20 || c > 0x7e)) c = '.';
+        log::write("transit: request string (%u): \"%s\"", len, buf);
     }
     uint8_t own[0x50] = {};
     if (mem::copy(req + 0x30, own, sizeof own)) {
