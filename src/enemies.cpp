@@ -96,8 +96,8 @@ Shield g_shields[kMaxFound];
 // What one walk did. Classifications: a slot never seen, an entry now pointing at other hashes, a failed copy tried
 // again. Failed copies: an archetype's columns (its hashes and offsets), its chunk's rows. Rejected: rows with an
 // entity handle whose Health did not read as alive (a fraction outside (0, 1], a max of 0); `again`, those rejected on
-// the walk before too, which stay dead; the rest flipped between two walks: dying, or torn by the game writing the row
-// while this thread read it, since the walk no longer runs inside a system call.
+// the read of the same rows before too, which stay dead; the rest flipped between two reads: dying, or torn by the game
+// writing the row while this thread read it, since the walk no longer runs inside a system call.
 struct Count {
     int fresh = 0, changed = 0, retried = 0, chunks = 0, unbounded = 0;
     int lost_columns = 0, lost_rows = 0, rejected = 0, again = 0;
@@ -204,16 +204,21 @@ bool copy_column(uint64_t chunk, int16_t index, uint32_t capacity, uint32_t size
     return false;
 }
 
-// The handles rejected on this walk and on the one before, the older sorted: g_rejects[g_rejects_now] fills.
-uint64_t g_rejects[2][kMaxFound];
-int g_rejects_n[2], g_rejects_now;
+// The handles rejected on one read of a set of rows and on the read of the same rows before it, the older sorted. The
+// NPC rows are read on every walk, the linked ones on one walk a second, so each set keeps its own.
+struct Rejects {
+    uint64_t handles[2][kMaxFound];
+    int n[2], now;
 
-void reject(uint64_t handle) {
-    g_walk.rejected++;
-    const int before = g_rejects_now ^ 1;
-    if (std::binary_search(g_rejects[before], g_rejects[before] + g_rejects_n[before], handle)) g_walk.again++;
-    if (g_rejects_n[g_rejects_now] < kMaxFound) g_rejects[g_rejects_now][g_rejects_n[g_rejects_now]++] = handle;
-}
+    void begin() { n[now ^= 1] = 0; }
+    void end() { std::sort(handles[now], handles[now] + n[now]); }
+    void add(uint64_t handle) {
+        g_walk.rejected++;
+        const int before = now ^ 1;
+        if (std::binary_search(handles[before], handles[before] + n[before], handle)) g_walk.again++;
+        if (n[now] < kMaxFound) handles[now][n[now]++] = handle;
+    }
+} g_npc_rejects, g_linked_rejects;
 
 // A live row: a fraction in (0, 1] of a positive max. A torn row reads as anything; the bound at 1 catches the ones
 // that read high.
@@ -233,7 +238,7 @@ void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
         const auto max = at<int32_t>(health + 4);
         if (!g_handles[r]) continue;
         if (!alive(fraction, max)) {
-            reject(g_handles[r]);
+            g_npc_rejects.add(g_handles[r]);
             continue;
         }
         Enemy &e = g_found[g_found_n++];
@@ -285,7 +290,7 @@ void read_linked(uint64_t chunk, const Class &c, uint32_t capacity, int64_t arch
         const auto max = at<int32_t>(health + 4);
         if (!g_handles[r]) continue;
         if (!alive(fraction, max)) {
-            reject(g_handles[r]);
+            g_linked_rejects.add(g_handles[r]);
             continue;
         }
         Linked &l = g_linked[g_linked_n++];
@@ -343,15 +348,17 @@ void walk(const player::State &s, long calls, int64_t now) {
         g_class_world = g_world.address();
     }
     g_found_n = g_shields_n = 0;
-    g_rejects_now ^= 1;
-    g_rejects_n[g_rejects_now] = 0;
+    g_npc_rejects.begin();
     const int64_t t0 = now_us();
     probe_combat(s, calls, now);
     const int64_t t1 = now_us();
     g_walk.combat_us = t1 - t0;
     // The linked rows feed a log line at most once a second: their chunks are read on one walk in kListGapUs.
     const bool sample_linked = now - g_linked_logged_at >= kListGapUs;
-    if (sample_linked) g_linked_n = 0;
+    if (sample_linked) {
+        g_linked_n = 0;
+        g_linked_rejects.begin();
+    }
     const bool located = s.has_position;
     const float *player = s.position;
     g_player_located = located;
@@ -381,7 +388,8 @@ void walk(const player::State &s, long calls, int64_t now) {
     }
 
     g_walk.slots_us = now_us() - t1;
-    std::sort(g_rejects[g_rejects_now], g_rejects[g_rejects_now] + g_rejects_n[g_rejects_now]);
+    g_npc_rejects.end();
+    if (sample_linked) g_linked_rejects.end();
     for (int i = 0; i < g_found_n; i++) {
         Enemy &e = g_found[i];
         const uint64_t handle = e.id | static_cast<uint64_t>(e.generation) << 32;
@@ -557,7 +565,7 @@ void log_period() {
         static_cast<unsigned long>(g_interval_ms), g_found_n, g_shields_n);
     log::write(
         "  classified %d new, %d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows "
-        "rejected, %d of them on the walk before too; %d Health columns unbounded",
+        "rejected, %d of them on the read before too; %d Health columns unbounded",
         t.fresh, t.changed, t.retried, t.chunks, t.lost_columns, t.lost_rows, t.rejected, t.again, t.unbounded);
     // The slowest walk's cycles as microseconds at the period's rate: far under its wall time = off the CPU.
     const long on_cpu = g_period.sum_cycles
@@ -566,7 +574,7 @@ void log_period() {
     log::write(
         "  the slowest walk: combat probe %ld us, slots %ld us, on the CPU ~%ld us; classified %d new, "
         "%d changed, %d retried; %d chunks; copies failed: %d columns, %d rows; %d rows rejected, %d on the "
-        "walk before too",
+        "read before too",
         static_cast<long>(m.combat_us), static_cast<long>(m.slots_us), on_cpu, m.fresh, m.changed, m.retried, m.chunks,
         m.lost_columns, m.lost_rows, m.rejected, m.again);
     g_period = {};
