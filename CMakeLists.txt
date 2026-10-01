@@ -42,6 +42,7 @@ add_library(crsrt-core STATIC
   src/solve.cpp
   src/boot.cpp
   src/ecs.cpp
+  src/envwatch.cpp
   src/motion.cpp
   src/player.cpp
   src/hooks/runner.cpp)
@@ -56,6 +57,7 @@ add_library(cr-srt SHARED
   src/hooks/damage.cpp
   src/hooks/present.cpp
   src/hooks/sonar.cpp
+  src/hooks/transit.cpp
   src/hooks/uistate.cpp
   src/overlay/swap.cpp
   src/overlay/renderer.cpp

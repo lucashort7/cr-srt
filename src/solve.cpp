@@ -5,11 +5,24 @@
 #include "log.h"
 #include "pe.h"
 
+#include <cstring>
+
 namespace crsrt::solve {
 
 namespace {
 unsigned long off(const void *p, HMODULE exe) {
     return static_cast<unsigned long>(static_cast<const uint8_t *>(p) - reinterpret_cast<const uint8_t *>(exe));
+}
+
+// Whether the string at `s` (bounded by its section's end) is a system's getName: past one, the store search has walked
+// into the next system's registration and would take its function (update_loading_state took
+// action_wait_one_fixed_update's, 2026-09-30).
+bool names_a_system(const uint8_t *s, const uint8_t *hi) {
+    static constexpr char kMark[] = "ecs::system::getName<";
+    constexpr size_t kLen = sizeof kMark - 1;
+    for (const uint8_t *p = s; p + kLen <= hi && p < s + 256 && *p; p++)
+        if (std::memcmp(p, kMark, kLen) == 0) return true;
+    return false;
 }
 }  // namespace
 
@@ -50,7 +63,7 @@ uintptr_t get_player(HMODULE exe, uintptr_t *lookup) {
 uintptr_t runner(HMODULE exe) { return system(exe, game::kRunnerName, "runner"); }
 
 uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
-    const uint8_t *str = nullptr, *tlo = nullptr, *thi = nullptr;
+    const uint8_t *str = nullptr, *tlo = nullptr, *thi = nullptr, *slo = nullptr, *shi = nullptr;
     const pe::Pattern name{reinterpret_cast<const uint8_t *>(name_text), nullptr, lstrlenA(name_text)};
     for (const IMAGE_SECTION_HEADER &s : pe::sections(exe)) {
         const uint8_t *lo = reinterpret_cast<const uint8_t *>(exe) + s.VirtualAddress, *hi = lo + s.Misc.VirtualSize;
@@ -63,6 +76,7 @@ uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
         if (pe::scan(lo, hi, name, &hit, 1) > 0) {
             while (hit > lo && hit[-1] != 0) hit--;  // the lea targets the start of the whole string
             str = hit;
+            slo = lo, shi = hi;
         }
     }
     if (!str || !tlo) {
@@ -85,7 +99,17 @@ uintptr_t system(HMODULE exe, const char *name_text, const char *what) {
     }
     // lea rax, [rip+fn] then mov [reg+disp32], rax: REX.W (+B), 89, modrm mod=10 reg=rax, a SIB byte when rm=100
     const uint8_t *hit[1] = {nullptr};
-    for (const uint8_t *p = lea; p + 16 <= thi && p < lea + 0x400 && !hit[0]; p++) {
+    for (const uint8_t *p = lea + 7; p + 16 <= thi && p < lea + 0x400 && !hit[0]; p++) {
+        if ((p[0] == 0x48 || p[0] == 0x4c) && p[1] == 0x8d && (p[2] & 0xc7) == 0x05) {  // lea r64, [rip+rel32]
+            const uint8_t *target = p + 7 + *reinterpret_cast<const int32_t *>(p + 3);
+            if (target >= slo && target < shi && target != str && names_a_system(target, shi)) {
+                log::write(
+                    "scan: %s name at exe+%lx, lea exe+%lx, the next system's name at exe+%lx before any "
+                    "registration store - not solved",
+                    what, off(str, exe), off(lea, exe), off(p, exe));
+                return 0;
+            }
+        }
         if (p[0] != 0x48 || p[1] != 0x8d || p[2] != 0x05) continue;
         const uint8_t *q = p + 7;
         if ((q[0] != 0x48 && q[0] != 0x49) || q[1] != 0x89 || (q[2] & 0xf8) != 0x80) continue;

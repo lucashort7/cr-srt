@@ -1,6 +1,7 @@
 // uistate.cpp
 #include "hooks/uistate.h"
 
+#include "envwatch.h"
 #include "game.h"
 #include "hooks/runner.h"
 #include "lifecycle.h"
@@ -42,69 +43,28 @@ void bits(void *ctx, LONG n) {
     const uint8_t *tray = nullptr, *stacks = nullptr;
     uint64_t now[3] = {};
     if (!mem::copy(static_cast<const uint8_t *>(ctx) + game::kEnvTray, &tray, sizeof tray) ||
-        !mem::copy(tray + game::kHudVisUIStateStacks, &stacks, sizeof stacks) || !stacks ||
-        !mem::copy(stacks + game::kUIStacksBits, now, sizeof now) || std::memcmp(now, g_bits, sizeof now) == 0)
+        !mem::copy(tray + game::kHudVisFactDictionary, &stacks, sizeof stacks) || !stacks ||
+        !mem::copy(stacks + game::kFactBits, now, sizeof now) || std::memcmp(now, g_bits, sizeof now) == 0)
         return;
     char text[3][24];
     for (int i = 0; i < 3; i++) hex64(now[i], text[i]);
-    log::write("uistate: bits +128 %s +130 %s +138 %s (call %ld)", text[0], text[1], text[2], static_cast<long>(n));
+    log::write("uistate: FactDictionary bits +128 %s +130 %s +138 %s (call %ld)", text[0], text[1], text[2],
+               static_cast<long>(n));
     std::memcpy(g_bits, now, sizeof now);
 }
 
-// An env's first kEnvWatchBytes, diffed on each read: the qwords that moved, offset and old -> new, so a change past
-// the first 64 bytes is seen (a skippable cutscene moved nothing in TimelineCinematicsControl's first 64, 2026-09-30).
-constexpr int kEnvWatchBytes = 512;
-struct EnvWatch {
-    const char *name;
-    uintptr_t slot;
-    bool follow;  // the slot holds a r::Ptr: read the object it points at
-    int size;  // bytes watched, at most kEnvWatchBytes: the arena packs envs, past its own an env reads its neighbour
-    uint8_t seen[kEnvWatchBytes];
-    bool ever;
+// The hud_visibility envs watched for the world kind (AKTH-0110), each capped at its nearest known neighbour
+// (envwatch.h). The load-screen byte the notes call "UIVisibility+0x10" is VSyncControl+0, the env 16 bytes past
+// UIStateStacks, watched by the transit probe; so is the r::Ptr<GameState> in slot 5, followed.
+envwatch::Watch g_hud_watch[] = {
+    {"UIVisibility", 1 * 8, false, 0xb8},
+    {"UIStateStacks", 2 * 8, false, 0xb8},
+    {"TimelineCinematicsControl", 4 * 8, false, 64},
+    {"JRPGState", game::kHudVisJRPGState, false, 0x70},
 };
-
-void watch(EnvWatch &w, const uint8_t *tray, LONG n) {
-    const uint8_t *env = nullptr;
-    uint8_t now[kEnvWatchBytes];
-    if (!mem::copy(tray + w.slot, &env, sizeof env) || !env) return;
-    if (w.follow && (!mem::copy(env, &env, sizeof env) || !env)) return;
-    if (!mem::copy(env, now, w.size)) return;
-    if (!w.ever) {
-        std::memcpy(w.seen, now, w.size);
-        w.ever = true;
-        log::write("uistate: %s at %p: %d bytes watched (call %ld)", w.name, env, w.size, static_cast<long>(n));
-        return;
-    }
-    if (std::memcmp(now, w.seen, w.size) == 0) return;
-    char line[6 * 44 + 8];
-    size_t k = 0;
-    int shown = 0;
-    for (int off = 0; off < w.size; off += 8) {
-        if (std::memcmp(now + off, w.seen + off, 8) == 0) continue;
-        uint64_t was = 0, is = 0;
-        std::memcpy(&was, w.seen + off, 8);
-        std::memcpy(&is, now + off, 8);
-        k += std::snprintf(line + k, sizeof line - k, "%s+%03x %016llx>%016llx", k ? " " : "", off,
-                           static_cast<unsigned long long>(was), static_cast<unsigned long long>(is));
-        if (++shown % 6 == 0) {
-            log::write("uistate: %s diff %s (call %ld)", w.name, line, static_cast<long>(n));
-            k = 0;
-        }
-    }
-    if (k) log::write("uistate: %s diff %s (call %ld)", w.name, line, static_cast<long>(n));
-    std::memcpy(w.seen, now, w.size);
-}
-
-// The hud_visibility envs watched for the world kind (AKTH-0110): the tower interior with no map is the probe.
-EnvWatch g_hud_watch[] = {
-    {"UIVisibility", 2 * 8, false, 0xb8, {}, false},
-    {"TimelineCinematicsControl", 5 * 8, false, 512, {}, false},
-    {"GameState", 6 * 8, false, 512, {}, false},  // an r::Ptr: a handle, not a pointer (following it read nothing)
-    {"JRPGState", game::kHudVisJRPGState, false, 0x70, {}, false},
-};
-EnvWatch g_challenge_watch[] = {
-    {"ChallengeModeInfo", 2 * 8, false, 512, {}, false},
-    {"ChallengeModeHudState", 3 * 8, false, 512, {}, false},
+envwatch::Watch g_challenge_watch[] = {
+    {"ChallengeModeInfo", 2 * 8, false, 512},
+    {"ChallengeModeHudState", 3 * 8, false, 512},
 };
 
 void hk_challenge(void *a, void *b, void *c, void *d) {
@@ -132,7 +92,8 @@ void hk_challenge(void *a, void *b, void *c, void *d) {
                 g_challenge_logged = active == 1;
             }
             if (n % kEvery == 1)
-                for (EnvWatch &w : g_challenge_watch) watch(w, tray, n);
+                for (envwatch::Watch &w : g_challenge_watch)
+                    envwatch::read(w, tray, game::kChallengeSlots, "uistate", n);
         }
         if (n % 1800 == 0) log::write("uistate: challenge %ld calls", static_cast<long>(n));
     }
@@ -152,7 +113,7 @@ void hk_hud(void *a, void *b, void *c, void *d) {
             bits(c, n);
             const uint8_t *tray = nullptr;
             if (mem::copy(static_cast<const uint8_t *>(c) + game::kEnvTray, &tray, sizeof tray))
-                for (EnvWatch &w : g_hud_watch) watch(w, tray, n);
+                for (envwatch::Watch &w : g_hud_watch) envwatch::read(w, tray, game::kHudVisSlots, "uistate", n);
         }
     }
     g_original_hud(a, b, c, d);

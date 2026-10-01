@@ -177,16 +177,20 @@ inline constexpr uintptr_t kActiveStride = 0x10;
 inline constexpr uintptr_t kActiveDistrictHash = 0x8;
 inline constexpr uintptr_t kActiveOtherHash = 0xc;
 
-// --- The UI's state (AKTH-0110, hooks/uistate.h). heron::hud_visibility::system reads, in slots 0-8: its entity, one
-// query (the player's Status and LogicData), UIVisibility, UIStateStacks, FactDictionary, TimelineCinematicsControl, a
-// r::Ptr<GameState>, JRPGState, Options (its tray, 2026-09-30). Found by name like the runner.
+// --- The UI's state (AKTH-0110, hooks/uistate.h). heron::hud_visibility::system reads, in slots 0-7: one query (the
+// player's Status and LogicData), UIVisibility, UIStateStacks, FactDictionary, TimelineCinematicsControl (an address at
+// alignment 1, a marker), a r::Ptr<GameState>, JRPGState, Options. It has no entity slot: its getName starts with the
+// query, and its tray of 2026-09-30 20:46 matched the transit trays' addresses slot for slot. Until then every slot
+// was labelled one too high, so the notes before that evening say UIVisibility for UIStateStacks, UIStateStacks for
+// FactDictionary, TimelineCinematicsControl for the r::Ptr<GameState>, GameState for JRPGState. Found by name like the
+// runner.
 inline constexpr char kHudVisibilityName[] = "ecs::system::getName<void __cdecl heron::hud_visibility::system(";
-inline constexpr int kHudVisSlots = 9;
-inline constexpr uintptr_t kHudVisUIStateStacks = 3 * 8;
-// UIStateStacks+0x128, +0x130, +0x138: three qwords that read as bitsets of what the UI shows. The map sets bits 3,
-// 27-29 of +0x138, the inventory bits 33 and 61; the quest log and the pause menu set none of them, so they name a
-// screen's content and not the hub. The whole object freezes while a screen is open. Logged on change, a lead.
-inline constexpr uintptr_t kUIStacksBits = 0x128;
+inline constexpr int kHudVisSlots = 8;
+inline constexpr uintptr_t kHudVisFactDictionary = 3 * 8;
+// FactDictionary+0x128, +0x130, +0x138: three qwords that read as bitsets of what the UI shows (the notes call them
+// UIStateStacks' bits). The map sets bits 3, 27-29 of +0x138, the inventory bits 33 and 61; the quest log and the pause
+// menu set none of them, so they name a screen's content and not the hub. Logged on change, a lead.
+inline constexpr uintptr_t kFactBits = 0x128;
 // The game's own pause detection, for the audio: sndencore::pause_state_detection::system(AudioPause &,
 // FixedUpdateState &), slots 0 and 1, no entity slot first (its tray, 2026-09-30). AudioPause's byte +0 is 1 while
 // any hub screen (Tab, M, C, I, J, L) or the pause menu (Esc) is open, 0 in the world: 7 of 7. FixedUpdateState+0x18
@@ -196,7 +200,7 @@ inline constexpr char kPauseDetectName[] =
 inline constexpr int kPauseDetectSlots = 2;
 inline constexpr uintptr_t kPauseDetectAudioPause = 0;
 inline constexpr uintptr_t kAudioPauseFlag = 0;
-inline constexpr uintptr_t kHudVisJRPGState = 7 * 8;  // heron::ui_jrpg::env::JRPGState, a minigame's UI; a probe
+inline constexpr uintptr_t kHudVisJRPGState = 6 * 8;  // heron::ui_jrpg::env::JRPGState, a minigame's UI; a probe
 // The arcade, the game's "Challenge": heron::challenge_mode::update_score::system(Entity, Query, ChallengeModeInfo &,
 // ChallengeModeHudState &, LuaEvents &, FixedTime &), slots 2 and 3 the envs (its tray, 2026-09-30), called at the
 // fixed 30 Hz in and out of a challenge. ChallengeModeInfo, measured over six runs of the Central time trial: +0 a
@@ -213,6 +217,35 @@ inline constexpr uintptr_t kChallengeInfo = 2 * 8;
 inline constexpr uintptr_t kChallengeMachine = 0x10;  // the hash that names the cabinet (names::kMachines)
 inline constexpr uintptr_t kChallengeActive = 0x14;
 inline constexpr uintptr_t kChallengeElapsed = 0x28;
+
+// --- The transitions, a probe for the taxi (AKTH-0110, hooks/transit.h). The exe has no "taxi"; these are the systems
+// whose parameters carry its words for moving the player between worlds, each hooked by name like the runner, its
+// tray slots in its getName's parameter order (2026-09-30). The slot counts are the parameters, queries included.
+inline constexpr char kTransitionName[] =
+    "ecs::system::getName<void __cdecl heron::game_flow::update_player_transition::system(";
+inline constexpr int kTransitionSlots = 11;
+inline constexpr char kTransitionFixedName[] =
+    "ecs::system::getName<void __cdecl heron::game_flow::player_transition_fixed_update::system(";
+inline constexpr int kTransitionFixedSlots = 2;
+inline constexpr char kJumpPointName[] =
+    "ecs::system::getName<void __cdecl coregame::jumppoint::applyPendingJumpPointVariable(";
+inline constexpr int kJumpPointSlots = 11;
+inline constexpr char kLoadingStateName[] =
+    "ecs::system::getName<void __cdecl heron::game_flow::update_loading_state::system(";
+inline constexpr int kLoadingStateSlots = 10;
+inline constexpr char kConsumeMainWorldName[] =
+    "ecs::system::getName<void __cdecl heron::game_flow::consume_main_world::system(";
+inline constexpr int kConsumeMainWorldSlots = 14;
+inline constexpr char kTimelineHudName[] =
+    "ecs::system::getName<void __cdecl heron::ui_timeline::reset_hud_overrides::system(";
+inline constexpr int kTimelineHudSlots = 4;
+inline constexpr char kLevelSelectName[] =
+    "ecs::system::getName<void __cdecl heron::ui_level_select::update_facts::system(";
+inline constexpr int kLevelSelectSlots = 3;
+inline constexpr char kGapEntryName[] = "ecs::system::getName<void __cdecl heron::ui_gap::entry::system(";
+inline constexpr int kGapEntrySlots = 2;
+inline constexpr char kGapExitName[] = "ecs::system::getName<void __cdecl heron::ui_gap::exit::system(";
+inline constexpr int kGapExitSlots = 8;
 
 // A Health row in points: its fraction of max, rounded to the nearest point.
 inline int points(float fraction, int32_t max) {

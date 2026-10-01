@@ -2,8 +2,9 @@
 // nothing in the game. sndencore::pause_state_detection::system reads AudioPause, whose byte +0 is 1 while any
 // screen of the hub (Tab, M, C, I, J, L) or the pause menu (Esc) is open and 0 in the world: 7 of 7 on 2026-09-30,
 // per frame, while the runner and the sonar are not called at all. heron::hud_visibility::system reads
-// UIStateStacks, whose bitsets at +0x128..+0x138 name the screen's content (the map, the inventory) and are logged
-// on change as a lead (AKTH-0110). Both run at frame rate, in and out of a pause.
+// FactDictionary, whose bitsets at +0x128..+0x138 name the screen's content (the map, the inventory) and are logged
+// on change as a lead, and UIStateStacks, whose +0x10 marks a load screen (AKTH-0110). Both run at frame rate, in and
+// out of a pause.
 #pragma once
 
 #include <windows.h>

@@ -1,6 +1,7 @@
 // runner.cpp
 #include "hooks/runner.h"
 
+#include "envwatch.h"
 #include "game.h"
 #include "lifecycle.h"
 #include "log.h"
@@ -106,6 +107,26 @@ void log_story(const player::State &s, LONG n) {
     log::write("player: %s (call %ld)", s.in_story ? "in a story area" : "out of the story area", static_cast<long>(n));
 }
 
+// The player's whole LogicData row, diffed every kLogicEvery calls (~0.5 s): the story byte was found this way, and a
+// taxi that takes the controls should move a record too (AKTH-0110). The first records flip with every key; envwatch
+// mutes a record that never rests.
+constexpr LONG kLogicEvery = 15;
+constexpr int kLogicBytes = static_cast<int>(sizeof player::State::logic);
+uint8_t g_logic_seen[kLogicBytes];
+envwatch::Count g_logic_counts[kLogicBytes / 8];
+bool g_logic_ever;
+void log_logic(const player::State &s, LONG n) {
+    if (!s.has_logic || n % kLogicEvery != 0) return;
+    if (!g_logic_ever) {
+        std::memcpy(g_logic_seen, s.logic, sizeof g_logic_seen);
+        g_logic_ever = true;
+        log::write("player: LogicData baseline, %d bytes diffed every %ld calls (call %ld)", kLogicBytes,
+                   static_cast<long>(kLogicEvery), static_cast<long>(n));
+        return;
+    }
+    envwatch::diff_bytes("player", "LogicData", s.logic, g_logic_seen, g_logic_counts, kLogicBytes, n);
+}
+
 void log_player(const player::State &s, LONG n) {
     if (!s.has_health) {
         if (g_logged.has_health) log::write("player: not resolved (call %ld)", static_cast<long>(n));
@@ -173,6 +194,7 @@ void hk_runner(void *a, void *b, void *c, void *d) {
         meter(kRead, t1 - t, n), t = t1;
         log_story(s, n);
         log_dead(s, n);
+        log_logic(s, n);
         motion::sample(s, n);
         t1 = now_us();
         meter(kMotion, t1 - t, n), t = t1;
@@ -231,6 +253,7 @@ void log_env_tray(const char *who, void *ctx, int slots) {
         return;
     }
     log::write("%s: env tray %p (ctx %p), %d slots", who, tray, ctx, slots);
+    envwatch::note_tray(reinterpret_cast<const uint8_t *>(tray), slots);
     for (int i = 0; i < slots; i++) {
         void *p = tray[i];
         char own[160] = "-", body[200] = "unreadable";
