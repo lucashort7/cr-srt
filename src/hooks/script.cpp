@@ -9,9 +9,9 @@
 #include "log.h"
 #include "memory.h"
 #include "pe.h"
-#include "sequence.h"
 #include "solve.h"
 #include "source.h"
+#include "whereabouts.h"
 
 #include <array>
 #include <cstdint>
@@ -104,7 +104,7 @@ void entity_place(const uint8_t *L, uint64_t handle, char *out, size_t cap) {
 }
 
 // A call that names the level it switches to in arg 2, read on every call, not only the logged ones: the
-// *_switch_to_level family by a path, zone_transition(from, to) by the level's name (sequence.h).
+// *_switch_to_level family by a path, zone_transition(from, to) by the level's name (whereabouts.h).
 enum class Seq : uint8_t { none, names };
 
 struct Function {
@@ -228,7 +228,7 @@ bool arg_string(const uint8_t *L, long index, char *out, size_t cap) {
 void track(const Function &f, void *state) {
     char level[256];
     if (f.seq == Seq::names && arg_string(static_cast<const uint8_t *>(state), 2, level, sizeof level))
-        sequence::enter(level, transit::area());
+        whereabouts::level_named(level, transit::area(), GetTickCount64());
 }
 
 template <int I>

@@ -11,7 +11,7 @@
 #include "memory.h"
 #include "names.h"
 #include "player.h"
-#include "sequence.h"
+#include "whereabouts.h"
 
 #include <windows.h>
 
@@ -34,10 +34,6 @@ constexpr long kStaleDraws = 30;
 constexpr long kIniEvery = 60;  // draws between two reads of [enemies] in the ini, ~1 s
 // Seconds with no runner call before the zone's clock stops: the game is paused. A pause costs the clock at most this.
 constexpr float kClockGrace = 0.1f;
-// Seconds a new zone must hold before the clock takes it. Inside one district the game's active list empties for a few
-// looks (one every ~0.5 s): the log of 2026-09-29 has 16 gaps with the same district on both sides, logged to the
-// whole second as 1, 1, 2, 4, 6 s and up, so the shortest three last at most 3 s.
-constexpr double kZoneSettle = 3.5;
 
 // The panel as Lucas drew it over a 1920x1080 screenshot (story AKTH-0109). Every size is in pixels at a height of 1080
 // and scales with the text, which has one size: the SRT's 11 px at 1080, following the height, never under 11.
@@ -65,20 +61,8 @@ bool g_stale_said;
 // them, and the allies within the same radius under them, at most `[allies] rows`, only while there is one.
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
-// [areas] <id's first 8 hex digits>=<label>: the name of a level, as Lucas writes it; g_area_label is the label read
-// for g_area_labelled. Every id is shown, labelled or not, so an unmapped one is seen and named (2026-10-01).
-uint64_t g_area_labelled;
-char g_area_label[32];
 
 enemies::List g_list;  // the render thread's copy, one per draw
-
-// The zone's clock. g_zone is the zone it runs in, the sonar's id or "" outside every district, and g_shown that zone
-// as the sonar last read it, for the zone line. g_away is the running time since the sonar last read g_zone, which no
-// zone owns until one is taken. g_next is a district the sonar reads that has not held kZoneSettle yet, g_next_held how
-// long it has, and g_empty the running time of the current stretch with no district.
-char g_zone[32], g_next[32];
-double g_zone_secs, g_away, g_next_held, g_empty;
-sonar::District g_shown, g_next_shown;
 
 // White on a drop shadow, for what the overlay draws outside the panel.
 void text_at(ImVec2 at, float px, const char *text, ImU32 color = IM_COL32(255, 255, 255, 235)) {
@@ -126,13 +110,6 @@ void read_ini(long frame) {
     g_rows = std::min(g_rows, enemies::kMaxRows);
     g_ally_rows = static_cast<int>(GetPrivateProfileIntW(L"allies", L"rows", 4, ini.c_str()));
     g_ally_rows = std::min(g_ally_rows, enemies::kMaxRows);
-    // the label for the level now, every pass: a line added to the ini while the player stands in the level is seen
-    const uint64_t area = transit::area();
-    wchar_t key[16], label[32];
-    std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(area >> 32));
-    GetPrivateProfileStringW(L"areas", key, L"", label, static_cast<DWORD>(std::size(label)), ini.c_str());
-    std::snprintf(g_area_label, sizeof g_area_label, "%ls", label);
-    g_area_labelled = area;
 }
 
 // "hiss", or the hash's first four digits.
@@ -159,15 +136,6 @@ void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
                       kind[5], kind[6], kind[7]);
     else
         std::snprintf(out, cap, "%02x%02x", kind[0], kind[1]);
-}
-
-// "central_trial", or the machine's hash when the table lacks it.
-const char *machine_label(uint32_t hash) {
-    for (const auto &m : names::kMachines)
-        if (m.hash == hash) return m.name;
-    static char hex[12];
-    std::snprintf(hex, sizeof hex, "%08x", static_cast<unsigned>(hash));
-    return hex;
 }
 
 bool shown(const enemies::Enemy &e) { return e.distance < 0.0f || e.distance <= static_cast<float>(g_radius); }
@@ -217,92 +185,30 @@ void bar(ImDrawList *dl, ImVec2 at, float width, float height, float fraction, I
     if (fraction > 0.0f) dl->AddRectFilled(at, ImVec2(at.x + std::floor(width * fraction), at.y + height), fill);
 }
 
-// The clock starts over in `key` with every second since it last read the old zone, or, when `key` is that zone, keeps
-// them: the time away was a flicker.
-void take(const char *key, const sonar::District &shown) {
-    if (std::strncmp(key, g_zone, sizeof g_zone) == 0) {
-        g_zone_secs += g_away;
-    } else {
-        std::snprintf(g_zone, sizeof g_zone, "%s", key);
-        g_zone_secs = g_away;
-    }
-    g_shown = shown;
-    g_next[0] = '\0';
-    g_away = g_next_held = g_empty = 0.0;
-}
-
-// Seconds in the zone the sonar last resolved: from zero at every change of zone, a return included, and still while
-// the game is paused. Outside every district is a zone of its own. A district is taken once it has held kZoneSettle, a
-// stretch with no district once it has lasted that long, and a shorter stretch counts for the district around it.
-void zone_clock(const sonar::District &d, float dt) {
-    const double run = g_quiet <= kClockGrace ? dt : 0.0;
-    const char *key = d.has ? d.id : "";
-    const bool gap = key[0] == '\0' && g_next[0] != '\0';  // no district while one is held pending
-    if (!gap && std::strncmp(key, g_zone, sizeof g_zone) == 0) {
-        g_zone_secs += g_away + run;
-        g_shown = d;
-        g_next[0] = '\0';
-        g_away = g_next_held = g_empty = 0.0;
-        return;
-    }
-    g_away += run;
-    if (key[0] == '\0') {
-        g_empty += run;
-        g_next_held += run;
-        if (g_empty >= kZoneSettle) take("", d);
-        return;
-    }
-    g_empty = 0.0;
-    if (std::strncmp(key, g_next, sizeof g_next) != 0) {
-        std::snprintf(g_next, sizeof g_next, "%s", key);
-        g_next_held = 0.0;
-    }
-    g_next_held += run;
-    g_next_shown = d;
-    if (g_next_held >= kZoneSettle) take(key, g_next_shown);
-}
-
-// The zone the clock runs in, its clock and where the player stands: the zone line and the clock change together. The
-// zone is held while the game is paused, where it cannot change, so the map can be read against it.
+// The zone, the section, the clock and where the player stands, as whereabouts says them: the zone line and the clock
+// change together. The zone is held while the game is paused, where it cannot change, so the map can be read against
+// it.
 void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
-    sonar::District d;
-    sonar::district(d);
-    zone_clock(d, dt);
-    char s[96];
-    // The sonar names no district in the Gap or in a challenge; the player's InGap flag and ChallengeModeInfo do.
+    whereabouts::Inputs in;
+    sonar::district(in.district);
+    in.level = transit::area();
+    char point[64] = "";
+    if (transit::point(point, sizeof point, &in.point_level)) in.point = point;
+    in.in_gap = !stale && p.in_gap;
+    in.in_story = !stale && p.in_story;
     float elapsed = 0.0f;
-    uint32_t machine = 0;
-    if (!g_shown.has && !stale && p.in_gap)
-        std::snprintf(s, sizeof s, "zone: THE_GAP");
-    else if (!g_shown.has && uistate::challenge(&elapsed, &machine))
-        std::snprintf(s, sizeof s, "zone: CHALLENGE %s", machine_label(machine));
-    else if (!g_shown.has)
-        std::snprintf(s, sizeof s, "zone: --");
-    else if (g_shown.level == 0)
-        std::snprintf(s, sizeof s, "zone: %s", g_shown.id);
-    else
-        std::snprintf(s, sizeof s, "zone: %s [lv%d]", g_shown.id, g_shown.level);
-    if (!stale && p.in_story) std::strncat(s, " [story]", sizeof s - std::strlen(s) - 1);
+    in.challenge = uistate::challenge(&elapsed, &in.machine);
+    in.paused = uistate::paused();
+    in.run = g_quiet <= kClockGrace ? dt : 0.0;
+    in.now_ms = GetTickCount64();
+    whereabouts::View v;
+    whereabouts::frame(in, v);
+    char s[96];
+    std::snprintf(s, sizeof s, "zone: %s", v.zone);
     line(pen, s);
-    // the level the player is in: the Luau call that entered it, else GameState's level id by its [areas] label or its
-    // first digits, a zone, a building or an arena alike
-    char seq[64];
-    uint64_t point_id = 0;
-    const uint64_t area = transit::area();
-    // a fast travel names the area it landed in, finer than the level, and holds while the level is that one
-    if (transit::point(seq, sizeof seq, &point_id) && area && point_id == area)
-        std::snprintf(s, sizeof s, "section: %s", seq);
-    else if (sequence::name_for(area, seq, sizeof seq))
-        std::snprintf(s, sizeof s, "section: %s", seq);
-    else if (area && g_area_label[0] && area == g_area_labelled)
-        std::snprintf(s, sizeof s, "section: %s", g_area_label);
-    else if (area)
-        std::snprintf(s, sizeof s, "section: %08lx", static_cast<unsigned long>(area >> 32));
-    else
-        std::snprintf(s, sizeof s, "section: --");
+    std::snprintf(s, sizeof s, "section: %s", v.section);
     line(pen, s);
-    const long secs = static_cast<long>(g_zone_secs + g_away);
-    std::snprintf(s, sizeof s, "ts: %02ld:%02ld%s", secs / 60, secs % 60, uistate::paused() ? " [paused]" : "");
+    std::snprintf(s, sizeof s, "ts: %02ld:%02ld%s", v.seconds / 60, v.seconds % 60, v.paused ? " [paused]" : "");
     line(pen, s);
     if (stale || !p.has_position)
         std::snprintf(s, sizeof s, "loc: --");

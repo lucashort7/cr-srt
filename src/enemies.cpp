@@ -10,6 +10,7 @@
 #include "names.h"
 #include "player.h"
 #include "source.h"
+#include "whereabouts.h"
 
 #include <windows.h>
 
@@ -605,6 +606,9 @@ DWORD WINAPI walker(LPVOID) {
         const int64_t now = now_us();
         if (now - ini_at >= kListGapUs) {
             read_ini();
+            // the [areas] pairs learned and the label of the level now: the ini off the game's threads and off Present
+            static const std::wstring ini = log::path(L".ini");
+            whereabouts::flush(ini.c_str());
             ini_at = now;
         }
         player::State s;
