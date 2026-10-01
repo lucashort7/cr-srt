@@ -7,6 +7,9 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
+#include <iterator>
+#include <string>
 
 namespace crsrt::sequence {
 
@@ -67,9 +70,17 @@ bool name_for(uint64_t id, char *out, size_t cap) {
             found = true;
         }
     ReleaseSRWLockExclusive(&g_lock);
-    if (bound[0])
+    if (bound[0]) {
         log::write("sequence: id %08lx%08lx is %s", static_cast<unsigned long>(id >> 32),
                    static_cast<unsigned long>(id & 0xffffffffULL), bound);
+        // the pair into [areas] of the ini, the game's name over any hand label: the table outlives the inject
+        static const std::wstring ini = log::path(L".ini");
+        wchar_t key[16], value[kNameLen];
+        std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(id >> 32));
+        for (size_t i = 0; i < std::size(value); i++)
+            if ((value[i] = static_cast<wchar_t>(bound[i])) == 0) break;
+        WritePrivateProfileStringW(L"areas", key, value, ini.c_str());
+    }
     return found;
 }
 

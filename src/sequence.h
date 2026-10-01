@@ -3,7 +3,8 @@
 // 2026-09-30/10-01 on the taxi, the Gap's arena and the Oldest House. The level itself is the id at GameState+0x90
 // (transit::area), which changes a moment after the call; the name is bound to the first id that differs from the
 // one current at the call, and from then on that id is drawn by that name. An elevator ride changes the id with no
-// call, and such an id keeps its ini label or its digits. Nothing here reads the game.
+// call, and such an id keeps its ini label or its digits. A pair learned is written to [areas] in the ini, the
+// game's name over a hand label, so the table outlives the inject. Nothing here reads the game.
 #pragma once
 
 #include <cstddef>
