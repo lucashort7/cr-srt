@@ -22,7 +22,8 @@ inline constexpr uint32_t kArchTag = 0x48435241;  // "ARCH"
 inline constexpr uint32_t kEndTag = 0x21444e45;   // "END!"
 
 // A snapshot read whole into memory: a Source whose copies are answered from the file's blocks. A copy is answered when
-// one block holds all of it; a copy that spans two blocks fails, as one that spans two regions of the game would.
+// one block holds all of it. One that spans two blocks fails, stricter than the game: an archetype's tags, hashes and
+// offsets are one allocation there (1145 of 1146 archetypes in the 12:47 file), three blocks here.
 class Snapshot final : public mem::Source {
    public:
     // False when the file is missing, is not CRSNAP03 or ends early; the snapshot is then empty.
