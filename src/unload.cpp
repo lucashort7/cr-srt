@@ -3,6 +3,7 @@
 #include "unload.h"
 
 #include "enemies.h"
+#include "guarded.h"
 #include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
@@ -42,6 +43,7 @@ DWORD WINAPI unloader(LPVOID) {
         log::write("unload: hooks and overlay gone, the walk thread still running - staying mapped");
         ExitThread(0);
     }
+    guarded::remove();  // no thread of ours copies any more
     if (lifecycle::minhook_ready) {
         MH_STATUS mu = MH_Uninitialize();
         if (mu != MH_OK && mu != MH_ERROR_NOT_INITIALIZED) {

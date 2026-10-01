@@ -7,6 +7,7 @@
 #include "ecs.h"
 #include "enemies.h"
 #include "game.h"
+#include "guarded.h"
 #include "hooks/damage.h"
 #include "hooks/present.h"
 #include "hooks/runner.h"
@@ -39,6 +40,8 @@ DWORD WINAPI boot_main(LPVOID) {
         return 0;
     }
     lifecycle::minhook_ready = true;
+    // every game read after this one is a guarded copy, not a ReadProcessMemory that queues on the address-space lock
+    log::write("boot: guarded copy %s", guarded::install() ? "in place" : "refused - reads stay on ReadProcessMemory");
 
     cache::Offsets o;
     if (!lifecycle::stopping && boot::offsets_for(exe, o)) {

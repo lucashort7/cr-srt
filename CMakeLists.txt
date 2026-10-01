@@ -38,6 +38,7 @@ target_include_directories(minhook PUBLIC vendor/minhook/include)
 add_library(crsrt-core STATIC
   src/log.cpp
   src/memory.cpp
+  src/guarded.cpp
   src/source.cpp
   src/snapfile.cpp
   src/pe.cpp
@@ -92,6 +93,7 @@ add_executable(crsrt-tests
   tests/ecs_test.cpp
   tests/enemies_test.cpp
   tests/fixtures_test.cpp
+  tests/guarded_test.cpp
   tests/memory_test.cpp
   tests/player_test.cpp
   tests/registry_test.cpp

@@ -2,6 +2,7 @@
 // the last line leaves the DLL mapped, for the same reason as there.
 #include "unload.h"
 
+#include "guarded.h"
 #include "hooks/registry.h"
 #include "lifecycle.h"
 #include "log.h"
@@ -29,6 +30,7 @@ DWORD WINAPI unloader(LPVOID) {
         if (w != WAIT_OBJECT_0) ExitThread(0);
     }
     if (!hooks::release()) ExitThread(0);
+    guarded::remove();  // no thread of ours copies any more
     if (lifecycle::minhook_ready) {
         MH_STATUS mu = MH_Uninitialize();
         if (mu != MH_OK && mu != MH_ERROR_NOT_INITIALIZED) {

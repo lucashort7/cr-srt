@@ -1,6 +1,8 @@
 // memory.cpp
 #include "memory.h"
 
+#include "guarded.h"
+
 #include <windows.h>
 
 namespace crsrt::mem {
@@ -38,9 +40,10 @@ void query_meter(long long *calls, long long *avg_us, long long *max_us) {
     *avg_us = c ? t / c : 0;
 }
 
-// Proved by reading, not by asking: ReadProcessMemory on our own process fails cleanly on a page that is not there
-// and walks no VAD tree. VirtualQuery here cost 212 us on average under the game's spawning (9 000 calls in 20 s,
-// 2026-09-30 18:32), a queue on the address-space lock the allocator also takes; this is ~1 us.
+// Proved by reading, not by asking: the guarded copy once its handler is in, else ReadProcessMemory, both failing
+// cleanly on a page that is not there. VirtualQuery here cost 212 us on average under the game's spawning (9 000 calls
+// in 20 s, 2026-09-30 18:32), a queue on the address-space lock the allocator also takes; ReadProcessMemory on this
+// process queued the same way, 1-6.5 ms for a row memcpy read in 0-3 µs (2026-10-01).
 bool readable(const void *p, size_t len) {
     if (!p || !len) return false;
     alignas(16) char scratch[4096];
@@ -48,8 +51,7 @@ bool readable(const void *p, size_t len) {
     size_t left = len;
     while (left) {
         const size_t n = left < sizeof scratch ? left : sizeof scratch;
-        SIZE_T got = 0;
-        if (!ReadProcessMemory(GetCurrentProcess(), at, scratch, n, &got) || got != n) return false;
+        if (!copy(at, scratch, n)) return false;
         at += n;
         left -= n;
     }
@@ -64,6 +66,7 @@ size_t readable_run(const void *p) {
 }
 
 bool copy(const void *p, void *out, size_t n) {
+    if (guarded::installed()) return guarded::copy(out, p, n);
     SIZE_T got = 0;
     return ReadProcessMemory(GetCurrentProcess(), p, out, n, &got) && got == n;
 }

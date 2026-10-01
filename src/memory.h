@@ -13,8 +13,9 @@ bool readable(const void *p, size_t len);
 // whole table this way instead of one per entry.
 size_t readable_run(const void *p);
 
-// Copies n bytes at p to out through ReadProcessMemory, which fails instead of faulting when another thread frees the
-// memory mid-copy. For memory the game's worker threads own: chunks, type and offset tables.
+// Copies n bytes at p to out, failing instead of faulting when another thread frees the memory mid-copy: the guarded
+// copy (guarded.h) once its handler is in, ReadProcessMemory before. For memory the game's worker threads own: chunks,
+// type and offset tables.
 bool copy(const void *p, void *out, size_t n);
 
 // VirtualQuery calls since the last call, their mean and their max in microseconds; resets. All threads.
