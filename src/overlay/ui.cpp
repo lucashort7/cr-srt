@@ -66,8 +66,11 @@ bool g_stale_said;
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
 long g_ini_at = -kIniEvery;
 // [areas] <id's first 8 hex digits>=<label>: the name of a level the sonar gives no district for, as Lucas writes it.
-// g_area_label is the label read for g_area_labelled; g_zone_area the level id last seen with a district, the zone's.
-uint64_t g_area_labelled, g_zone_area;
+// g_area_label is the label read for g_area_labelled; g_zone_area the level id held kAreaSettle seconds with a
+// district, the zone's: the id changes in the same second the sonar loses the district, while the shown zone lingers.
+constexpr float kAreaSettle = 2.0f;
+uint64_t g_area_labelled, g_zone_area, g_area_last;
+float g_area_held;
 char g_area_label[32];
 
 enemies::List g_list;  // the render thread's copy, one per draw
@@ -289,7 +292,9 @@ void zone_section(Pen &pen, const player::State &p, bool stale, float dt) {
     // names no district and the id is not the zone's: a building, by the [areas] label or the id's first digits
     char seq[64];
     const uint64_t area = transit::area();
-    if (g_shown.has && area) g_zone_area = area;
+    if (area != g_area_last) g_area_last = area, g_area_held = 0.0f;
+    g_area_held += dt;
+    if (g_shown.has && area && g_area_held >= kAreaSettle) g_zone_area = area;
     if (sequence::current(seq, sizeof seq))
         std::snprintf(s, sizeof s, "section: %s", seq);
     else if (!g_shown.has && area && area != g_zone_area && g_area_label[0] && area == g_area_labelled)
