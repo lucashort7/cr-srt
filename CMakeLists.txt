@@ -38,6 +38,8 @@ target_include_directories(minhook PUBLIC vendor/minhook/include)
 add_library(crsrt-core STATIC
   src/log.cpp
   src/memory.cpp
+  src/source.cpp
+  src/snapfile.cpp
   src/pe.cpp
   src/cache.cpp
   src/solve.cpp
@@ -86,7 +88,8 @@ target_link_options(cr-probe PRIVATE -static -s)
 add_executable(crsrt-tests
   tests/main.cpp
   tests/fixtures_test.cpp
-  tests/memory_test.cpp)
+  tests/memory_test.cpp
+  tests/snapfile_test.cpp)
 target_include_directories(crsrt-tests PRIVATE tests)
 target_compile_options(crsrt-tests PRIVATE -Wall -Wextra)
 target_link_libraries(crsrt-tests PRIVATE crsrt-core)

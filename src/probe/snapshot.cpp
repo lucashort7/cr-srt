@@ -5,6 +5,7 @@
 #include "game.h"
 #include "log.h"
 #include "memory.h"
+#include "snapfile.h"
 
 #include <windows.h>
 
@@ -18,20 +19,11 @@ namespace crsrt::snapshot {
 
 namespace {
 
-// The file, little-endian:
-//   "CRSNAP03" | u64 world | u32 runner calls | u32 slots scanned | u32 world length | the world's first bytes
-//   per archetype whose tables read: u32 'ARCH' | i32 index | u64 chunk | u32 type count | u32 blob length
-//     | 32 bytes of its hashes entry (world+8+(index+0xc22)*32) | 32 bytes of its offsets entry
-//     (world+8+index*32+0x18450) | u32 hashes[count] | u32 offsets[count] | u32 n | u32 first[n]: the array the hashes
-//     entry's +0 points at, n from its +0x18 (a few more than count, unread) | blob: the chunk's first bytes, its
-//     header included
-//   u32 'END!'
-constexpr uint32_t kArchTag = 0x48435241;  // "ARCH"
-constexpr uint32_t kEndTag = 0x21444e45;   // "END!"
-constexpr uint32_t kBlobSlack = 0x400;     // past the last column's offset: that column's rows, width unknown
-constexpr uint32_t kBlobMax = 4u << 20;    // one chunk, at most
-constexpr long kFlagEvery = 15;            // runner calls between looks for the flag, ~0.5 s
-constexpr uint32_t kWorldMax = 2u << 20;   // the world object: the chunk slots and the archetype entries end ~0x9c450
+// The file's format: snapfile.h, whose Snapshot reads it back for the tests.
+constexpr uint32_t kBlobSlack = 0x400;    // past the last column's offset: that column's rows, width unknown
+constexpr uint32_t kBlobMax = 4u << 20;   // one chunk, at most
+constexpr long kFlagEvery = 15;           // runner calls between looks for the flag, ~0.5 s
+constexpr uint32_t kWorldMax = 2u << 20;  // the world object: the chunk slots and the archetype entries end ~0x9c450
 
 bool g_key_down;
 std::vector<uint8_t> g_buf;
@@ -66,7 +58,7 @@ void take(const uint8_t *world, long calls, const char *why) {
     DWORD t0 = GetTickCount();
     g_buf.clear();
     g_buf.reserve(16u << 20);
-    put("CRSNAP03", 8);
+    put(snapfile::kMagic, sizeof snapfile::kMagic);
     put(reinterpret_cast<uint64_t>(world));
     put(static_cast<uint32_t>(calls));
     put(static_cast<uint32_t>(game::kArchetypeMax));
@@ -98,7 +90,7 @@ void take(const uint8_t *world, long calls, const char *why) {
                 const size_t run = mem::readable_run(reinterpret_cast<const void *>(chunk));
                 blob = static_cast<uint32_t>(run < want ? run : want);
             }
-            put(kArchTag);
+            put(snapfile::kArchTag);
             put(static_cast<int32_t>(a));
             put(chunk);
             put(arch.count);
@@ -130,7 +122,7 @@ void take(const uint8_t *world, long calls, const char *why) {
             archs++;
         }
     }
-    put(kEndTag);
+    put(snapfile::kEndTag);
 
     SYSTEMTIME t;
     GetLocalTime(&t);
