@@ -240,7 +240,7 @@ TEST(a_bom_and_crlf_are_kept) {
 
 // The registry as the runner's world holds it (game.h): world + 0 -> {hashes, count, records}, the hashes sorted, a
 // record's name a string_view into a longer string. FactionData's and Health's names hash to their keys; the first
-// does not and is kept nameless.
+// does not, as a content component's does not, and is kept because Health's record names Health.
 struct FakeRegistry {
     uint32_t hashes[3] = {0x12345678, 0x3796cba6, 0x3dc2bc5c};
     alignas(8) uint8_t records[3 * 0x58] = {};
@@ -281,7 +281,7 @@ TEST(types_come_from_the_registry_with_the_names_that_hash_to_their_keys) {
     CHECK(types.size() == 4);
     CHECK(line(types, 0) == (std::vector<std::string>{"hash", "name", "size", "first_seen"}));
     CHECK(cell(types, 1, 0) == "12345678");
-    CHECK(cell(types, 1, 1).empty());
+    CHECK(cell(types, 1, 1) == "nothing hashes to this");
     CHECK(cell(types, 1, 2) == "0x8");
     CHECK(cell(types, 2, 0) == "3796cba6");
     CHECK(cell(types, 2, 1) == "heron::faction::component::FactionData");
@@ -291,12 +291,26 @@ TEST(types_come_from_the_registry_with_the_names_that_hash_to_their_keys) {
     CHECK(cell(types, 3, 2) == "0x40");
     CHECK(dict::known(dict::kTypes, 0x3dc2bc5c));
 
-    // a second session: the complete rows load, the nameless one is read again and stays nameless, nothing is written
+    // a second session: the complete rows load and nothing is written
     const std::string before = slurp(L"types.tsv");
     dict::open_at(kFolder);
     CHECK(dict::types(mem::live(), fake.at()));
     dict::step(true);
     CHECK(slurp(L"types.tsv") == before);
+}
+
+TEST(without_healths_record_naming_health_only_names_that_hash_are_kept) {
+    wipe();
+    static FakeRegistry fake;
+    fake.set(2, "heron::health::component::Healt", 31, 0x40);
+    dict::open_at(kFolder);
+    CHECK(dict::types(mem::live(), fake.at()));
+    dict::step(true);
+    const Rows types = rows(slurp(L"types.tsv"));
+    CHECK(types.size() == 4);
+    CHECK(cell(types, 1, 1).empty());
+    CHECK(cell(types, 2, 1) == "heron::faction::component::FactionData");
+    CHECK(cell(types, 3, 1).empty());
 }
 
 TEST(a_registry_whose_hashes_are_not_sorted_is_not_one) {

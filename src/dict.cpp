@@ -556,8 +556,22 @@ bool types(const mem::Source &source, uint64_t world) {
         g_types_failed_at = t0;
         return false;
     }
+    // Health's record naming Health vouches for the layout, and then a name that does not hash to its key is still the
+    // key's, the registry pairing them by index as the game's own search does: the content components hash another way
+    // (contentgame::ShieldComponent is 031b0c21, 447 of 1587 in build 1.4.0, 2026-10-01). Without it only a name that
+    // hashes is kept.
+    bool vouched = false;
+    for (uint32_t i = 0; i < count && !vouched; i++) {
+        if (hashes[i] != game::kHealth) continue;
+        uint64_t name_at = 0, length = 0;
+        std::memcpy(&name_at, records.data() + static_cast<size_t>(i) * game::kTypeRecordSize + game::kTypeName, 8);
+        std::memcpy(&length, records.data() + static_cast<size_t>(i) * game::kTypeRecordSize + game::kTypeNameLength,
+                    8);
+        vouched = length && length <= kMaxName && source.copy(name_at, g_name, length) &&
+                  fnv1a32(g_name, length) == game::kHealth;
+    }
     Book &b = g_books[kTypes];
-    int fresh = 0, filled = 0, unnamed = 0;
+    int fresh = 0, filled = 0, unhashed = 0, unnamed = 0;
     for (uint32_t i = 0; i < count; i++) {
         const uint32_t hash = hashes[i];
         const int32_t slot = hash ? find(b, hash) : -1;
@@ -569,7 +583,10 @@ bool types(const mem::Source &source, uint64_t world) {
         std::memcpy(&length, rec + game::kTypeNameLength, sizeof length);
         std::memcpy(&size, rec + game::kTypeSize, sizeof size);
         Change ch;
-        if (length && length <= kMaxName && source.copy(name_at, g_name, length) && fnv1a32(g_name, length) == hash) {
+        const bool read = length && length <= kMaxName && source.copy(name_at, g_name, length);
+        const bool hashed = read && fnv1a32(g_name, length) == hash;
+        if (read && !hashed) unhashed++;
+        if (hashed || (read && vouched)) {
             ch.cells[kTypeNameColumn].assign(g_name, length);
             for (char &k : ch.cells[kTypeNameColumn])
                 if (k == '\t' || k == '\r' || k == '\n') k = ' ';
@@ -584,10 +601,10 @@ bool types(const mem::Source &source, uint64_t world) {
     g_types_world = world;
     if (fresh || filled || !g_types_said)
         log::write(
-            "dict: types: the registry of world %p holds %lu, %d new, %d filled, %d without a name that hashes to "
-            "its key (%ld us)",
-            reinterpret_cast<void *>(world), static_cast<unsigned long>(count), fresh, filled, unnamed,
-            static_cast<long>(clock::now_us() - t0));
+            "dict: types: the registry of world %p holds %lu, %d new, %d filled; %d names read that do not hash to "
+            "their key, kept: %s; %d left nameless (%ld us)",
+            reinterpret_cast<void *>(world), static_cast<unsigned long>(count), fresh, filled, unhashed,
+            vouched ? "yes, Health's record names Health" : "no", unnamed, static_cast<long>(clock::now_us() - t0));
     g_types_said = true;
     return true;
 }

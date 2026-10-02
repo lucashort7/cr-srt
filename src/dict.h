@@ -51,9 +51,9 @@ void open();
 void open_at(const wchar_t *folder);
 
 // The type registry whose pointer the runner's world holds (game::kWorldTypeRegistry), read once per world: each type
-// not in the table, or in it with an empty name or size, is written with what the registry says. A name is kept only
-// when it hashes to its key (FNV-1a 32). False when the registry did not read or its hashes are not sorted, logged once
-// per world and tried again 10 s later.
+// not in the table, or in it with an empty name or size, is written with what the registry says. A name that does not
+// hash to its key (FNV-1a 32) is kept only when Health's record names Health. False when the registry did not read or
+// its hashes are not sorted, logged once per world and tried again 10 s later.
 bool types(const mem::Source &source, uint64_t world);
 
 // A kind the walk saw on a living enemy, with what it read off it once settled (enemies.cpp): a row for a new kind,
