@@ -38,7 +38,8 @@ constexpr float kClockGrace = 0.1f;
 // The panel as Lucas drew it over a 1920x1080 screenshot (story AKTH-0109). Every size is in pixels at a height of 1080
 // and scales with the text, which has one size: the SRT's 11 px at 1080, following the height, never under 11.
 constexpr float kPanelPx = 11.0f;
-constexpr float kAnchorX = 21.0f / 1920.0f, kAnchorY = 123.0f / 1080.0f;  // the box's top left, of the screen
+// The box's top left as Lucas drew it, in pixels of a 1920x1080 screen; [panel] left/top of the ini move it.
+constexpr int kAnchorLeft = 21, kAnchorTop = 123;
 constexpr float kBoxW = 208.0f;  // the least width: a wider line widens the box
 constexpr float kPadX = 12.0f, kPadY = 6.0f;
 constexpr float kLine = 14.0f;                                             // one line of text
@@ -60,6 +61,7 @@ bool g_stale_said;
 // [enemies] radius=30 rows=8, [allies] rows=4: the panel shows the enemies within `radius` metres, at most `rows` of
 // them, and the allies within the same radius under them, at most `[allies] rows`, only while there is one.
 int g_radius = 30, g_rows = 8, g_ally_rows = 4;
+int g_anchor_left = kAnchorLeft, g_anchor_top = kAnchorTop;
 long g_ini_at = -kIniEvery;
 
 enemies::List g_list;  // the render thread's copy, one per draw
@@ -110,6 +112,8 @@ void read_ini(long frame) {
     g_rows = std::min(g_rows, enemies::kMaxRows);
     g_ally_rows = static_cast<int>(GetPrivateProfileIntW(L"allies", L"rows", 4, ini.c_str()));
     g_ally_rows = std::min(g_ally_rows, enemies::kMaxRows);
+    g_anchor_left = static_cast<int>(GetPrivateProfileIntW(L"panel", L"left", kAnchorLeft, ini.c_str()));
+    g_anchor_top = static_cast<int>(GetPrivateProfileIntW(L"panel", L"top", kAnchorTop, ini.c_str()));
 }
 
 // "hiss", or the hash's first four digits.
@@ -356,7 +360,8 @@ void panel(float w, float h, const player::State &p, bool stale, long frame, flo
     pen.dl = ImGui::GetForegroundDrawList();
     pen.px = panel_px(h);
     pen.s = pen.px / kPanelPx;
-    const ImVec2 box(std::floor(w * kAnchorX), std::floor(h * kAnchorY));
+    const ImVec2 box(std::floor(w * static_cast<float>(g_anchor_left) / 1920.0f),
+                     std::floor(h * static_cast<float>(g_anchor_top) / 1080.0f));
     pen.x = box.x + scaled(pen, kPadX);
     pen.y = box.y + scaled(pen, kPadY);
     pen.right = pen.x;
