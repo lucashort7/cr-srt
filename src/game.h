@@ -70,7 +70,15 @@ inline constexpr uint8_t kSpawnBundlePrologue[] = {
     0x48, 0x89, 0x48, 0x08, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41,
     0x57, 0x48, 0x8d, 0xa8, 0x88, 0xfe, 0xff, 0xff, 0x48, 0x81, 0xec, 0x38, 0x02, 0x00, 0x00};
 inline constexpr uint32_t kSpawnRecordSize = 0x90;
-inline constexpr uintptr_t kSpawnRecordKind = 0x20;  // 8 bytes, the kind SpawnedNPC+0x30 carries once it is born
+// The record (AKTH-0119, 14 records correlated 2026-10-01): +0 a quaternion, +0x10 the position, +0x20 the kind,
+// +0x28 the owner's entity handle (the spawner, or the player for a summon), +0x48 the root key handed to the submit,
+// +0x50 a count of every spawn in the process, +0x78 the request's callback object, which the drain zeroes. Neither
+// the level nor the faction is in it.
+inline constexpr uintptr_t kSpawnRecordPosition = 0x10;  // three floats
+inline constexpr uintptr_t kSpawnRecordKind = 0x20;      // 8 bytes, the kind SpawnedNPC+0x30 carries once it is born
+inline constexpr uintptr_t kSpawnRecordOwner = 0x28;     // an entity handle
+inline constexpr uintptr_t kSpawnRecordRootKey = 0x48;   // 64 bits
+inline constexpr uintptr_t kSpawnRecordCallback = 0x78;  // a heap object per record
 // The function that fills a fresh entity's rows, found by the lookups it makes in the frame of a bundle with records
 // (build 9 of the probe, 2026-10-01): apply(chunk index, list, range, holder), the list {u64 count, u64 *entries} of
 // type hashes in the low dword, the range's low dword the first row and high dword the count past it. Per type it
