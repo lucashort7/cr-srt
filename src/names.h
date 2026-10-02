@@ -148,6 +148,7 @@ inline constexpr Kind kKinds[] = {
     {0xc2d353a9fa6fce18ull, "moldbag_shotgun", Source::Paired},
     {0x0ae36649c3edfaa6ull, "moldbag_rocketlauncher", Source::Paired},
     {0x0c8622242419f585ull, "brute_arcs", Source::Paired},
+    {0xac2379f122058f56ull, "glider_overshield", Source::Paired},  // 1980 + 1208 at level 6 (2026-10-02)
     {0x504daed11f390c7cull, "sniper_overshield", Source::Paired},
     {0x22a6ec1be4b02ed0ull, "drifter_charge", Source::Paired},
     {0xb5c87403f8aa4595ull, "flux_horizontal_saw", Source::Paired},
