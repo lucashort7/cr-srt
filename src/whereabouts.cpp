@@ -136,9 +136,11 @@ void frame(const Inputs &in, View &out) {
     g_seen_level = in.level;
 
     char hex[12];
-    // a level a call named, other than a zone's own, with no district around it: a sequence (the taxi, a dungeon)
+    // a level a call named, other than a zone's own, with no district around it: a sequence (the taxi, a dungeon).
+    // The [areas] label counts too, since a name a call bound before an inject comes back only through the ini.
     const char *name = name_of(in.level);
-    const bool sequence = in.level && name && std::strncmp(name, "zone_", 5) != 0;
+    const char *known = name ? name : (g_label[0] && g_label_level == in.level ? g_label : nullptr);
+    const bool sequence = in.level && known && std::strncmp(known, "zone_", 5) != 0;
     if (!g_shown.has && in.in_gap)
         std::snprintf(out.zone, sizeof out.zone, "THE_GAP");
     else if (!g_shown.has && in.challenge)

@@ -168,6 +168,20 @@ TEST(a_fast_travel_names_the_area_while_its_level_holds) {
     CHECK(is(play("", 0.5, in).section, "--"));
 }
 
+// A reinject forgets what calls bound; the taxi's name comes back from [areas], and the zone line still knows it.
+TEST(a_label_from_the_ini_also_makes_a_miniquest) {
+    whereabouts::reset();
+    const wchar_t *ini = L".\\whereabouts-test-mq.ini";
+    DeleteFileW(ini);
+    WritePrivateProfileStringW(L"areas", L"184dcbbd", L"mq_02_02_taxi_frontline", ini);
+    whereabouts::Inputs in;
+    in.level = kTower;
+    play("", 0.5, in);
+    whereabouts::flush(ini);
+    CHECK(is(play("", 0.5, in).zone, "MINIQUEST"));
+    DeleteFileW(ini);
+}
+
 TEST(flush_writes_a_bound_name_and_reads_a_label) {
     whereabouts::reset();
     const wchar_t *ini = L".\\whereabouts-test.ini";
