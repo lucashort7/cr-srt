@@ -57,6 +57,7 @@ void currencies(void *ctx, LONG n) {
 
 // The three bitset qwords as the log last saw them.
 uint64_t g_bits[3];
+const uint8_t *g_dict = nullptr;
 
 void hex64(uint64_t v, char *out) {
     wsprintfA(out, "%08lx%08lx", static_cast<unsigned long>(v >> 32), static_cast<unsigned long>(v & 0xffffffffULL));
@@ -68,6 +69,11 @@ void bits(void *ctx, LONG n) {
     if (!hooks::env(ctx, game::kHudVisFactDictionary, &stacks) ||
         !mem::copy(stacks + game::kFactBits, now, sizeof now) || std::memcmp(now, g_bits, sizeof now) == 0)
         return;
+    // The dictionary's address once per world: the outside probes (tools/_facts.py) take it as their argument.
+    if (stacks != g_dict) {
+        log::write("uistate: FactDictionary at %p (call %ld)", static_cast<const void *>(stacks), static_cast<long>(n));
+        g_dict = stacks;
+    }
     char text[3][24];
     for (int i = 0; i < 3; i++) hex64(now[i], text[i]);
     log::write("uistate: FactDictionary bits +128 %s +130 %s +138 %s (call %ld)", text[0], text[1], text[2],
