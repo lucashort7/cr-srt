@@ -32,6 +32,9 @@ int g_challenge_logged = -1;
 std::atomic<bool> g_has_currency{false};
 std::atomic<double> g_source{0.0}, g_talent{0.0};
 int g_source_logged = -1, g_talent_logged = -1;
+std::atomic<bool> g_has_cycle{false};
+std::atomic<double> g_cycle{0.0};
+int g_cycle_logged = -1;
 
 // Source and Talent Points, two doubles of the FactDictionary (facts.h), read every kEvery calls and logged when a
 // whole number moves: a pickup, a purchase, a point earned.
@@ -52,6 +55,19 @@ void currencies(void *ctx, LONG n) {
         log::write("uistate: source %d, talent points %d (call %ld)", s, t, static_cast<long>(n));
         g_source_logged = s;
         g_talent_logged = t;
+    }
+    // The Resonant Cycle, its own flag: a world without the fact keeps the currencies drawn.
+    double cycle = 0.0;
+    if (!facts::read_double(dict, game::kFactResonantCycle, &cycle)) {
+        g_has_cycle = false;
+        return;
+    }
+    g_cycle = cycle;
+    g_has_cycle = true;
+    const int c = static_cast<int>(cycle);
+    if (c != g_cycle_logged) {
+        log::write("uistate: resonant cycle %d (call %ld)", c, static_cast<long>(n));
+        g_cycle_logged = c;
     }
 }
 
@@ -192,6 +208,12 @@ bool currency(double *source, double *talent_points) {
     if (!g_has_currency.load()) return false;
     *source = g_source.load();
     *talent_points = g_talent.load();
+    return true;
+}
+
+bool cycle(double *count) {
+    if (!g_has_cycle.load()) return false;
+    *count = g_cycle.load();
     return true;
 }
 

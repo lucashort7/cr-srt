@@ -265,11 +265,17 @@ void player_section(Pen &pen, const player::State &p, bool stale) {
         std::snprintf(s, sizeof s, "bp: %d   as: %d   ab: %d", static_cast<int>(p.build_power),
                       static_cast<int>(p.aberrant), static_cast<int>(p.ability));
     line(pen, s);
-    double source = 0.0, talent = 0.0;
-    if (stale || !uistate::currency(&source, &talent))
-        std::snprintf(s, sizeof s, "src: --   tp: --");
+    double source = 0.0, talent = 0.0, cycle = 0.0;
+    char cycle_text[16];
+    if (stale || !uistate::cycle(&cycle))
+        std::snprintf(cycle_text, sizeof cycle_text, "--");
     else
-        std::snprintf(s, sizeof s, "src: %d   tp: %d", static_cast<int>(source), static_cast<int>(talent));
+        std::snprintf(cycle_text, sizeof cycle_text, "%d", static_cast<int>(cycle));
+    if (stale || !uistate::currency(&source, &talent))
+        std::snprintf(s, sizeof s, "src: --   tp: --   cycle: %s", cycle_text);
+    else
+        std::snprintf(s, sizeof s, "src: %d   tp: %d   cycle: %s", static_cast<int>(source), static_cast<int>(talent),
+                      cycle_text);
     line(pen, s);
     if (stale || !p.has_speed)
         std::snprintf(s, sizeof s, "ms: --");

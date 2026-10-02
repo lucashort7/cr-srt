@@ -305,6 +305,10 @@ inline constexpr uint16_t kFactEmpty = 6;
 inline constexpr uint64_t kFactCurrencyCash = 0x1E32CDB1862AA913;          // CURRENCY_CASH, the Source balance
 inline constexpr uint64_t kFactCurrencyTalentPoints = 0x4A29A12BB3EBC356;  // CURRENCY_TALENT_POINTS
 inline constexpr uint64_t kFactCurrencyRespec = 0x69CB479DA32F0045;        // CURRENCY_RESPEC_ITEMS, not drawn
+// The Resonant Cycle: Resonants defeated, 0 before the first; read 6 then 7 across the first boss of NG+ on 2026-10-01,
+// the one double fact that moved, and the same key with the same value sits in the save's -persi-global. Its name and
+// hash are unknown (tag fe, id bf4, apart from every other fact read).
+inline constexpr uint64_t kFactResonantCycle = 0xCB3F3E6A3476EA42;
 // The game's own pause detection, for the audio: sndencore::pause_state_detection::system(AudioPause &,
 // FixedUpdateState &), slots 0 and 1, no entity slot first (its tray, 2026-09-30). AudioPause's byte +0 is 1 while
 // any hub screen (Tab, M, C, I, J, L) or the pause menu (Esc) is open, 0 in the world: 7 of 7. FixedUpdateState+0x18

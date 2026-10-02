@@ -25,6 +25,9 @@ bool paused();
 // the first read or when the dictionary is not there. Any thread.
 bool currency(double *source, double *talent_points);
 
+// The Resonant Cycle as the same read found it (game::kFactResonantCycle), false while the fact is absent. Any thread.
+bool cycle(double *count);
+
 // ChallengeModeInfo as the last call read it: a challenge is running, its elapsed seconds (or score) and the hash
 // that names the machine (names::kMachines). Any thread.
 bool challenge(float *elapsed, uint32_t *machine);
