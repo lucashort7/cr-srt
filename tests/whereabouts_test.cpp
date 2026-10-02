@@ -116,6 +116,26 @@ TEST(a_level_takes_the_name_of_the_call_that_entered_it) {
     CHECK(is(play("", 0.5, in).section, "dungeon_jrpg"));  // bound for good
 }
 
+// 2026-10-02 00:58: the Frontline taxi named its level mq_02_02_taxi_frontline and the sonar had no district.
+TEST(a_level_a_call_named_outside_every_district_is_a_miniquest) {
+    whereabouts::reset();
+    whereabouts::level_named("mq_02_02_taxi_frontline", kHiss, 1000);
+    whereabouts::Inputs in;
+    in.level = kTower;
+    in.now_ms = 1500;
+    CHECK(is(play("", 0.5, in).zone, "MINIQUEST"));
+    CHECK(is(play("ZONE_HISS", 5.0, in).zone, "ZONE_HISS [lv3]"));  // a district wins
+}
+
+TEST(a_zones_own_level_is_no_miniquest) {
+    whereabouts::reset();
+    whereabouts::level_named("zone_oldest_house_interior", kHiss, 1000);
+    whereabouts::Inputs in;
+    in.level = kTower;
+    in.now_ms = 1500;
+    CHECK(is(play("", 0.5, in).zone, "--"));
+}
+
 TEST(a_name_whose_level_never_moves_is_forgotten) {
     whereabouts::reset();
     whereabouts::level_named("dungeon_hedron", kHiss, 0);

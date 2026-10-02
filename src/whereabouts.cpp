@@ -136,10 +136,15 @@ void frame(const Inputs &in, View &out) {
     g_seen_level = in.level;
 
     char hex[12];
+    // a level a call named, other than a zone's own, with no district around it: a sequence (the taxi, a dungeon)
+    const char *name = name_of(in.level);
+    const bool sequence = in.level && name && std::strncmp(name, "zone_", 5) != 0;
     if (!g_shown.has && in.in_gap)
         std::snprintf(out.zone, sizeof out.zone, "THE_GAP");
     else if (!g_shown.has && in.challenge)
         std::snprintf(out.zone, sizeof out.zone, "CHALLENGE %s", machine_label(in.machine, hex, sizeof hex));
+    else if (!g_shown.has && sequence)
+        std::snprintf(out.zone, sizeof out.zone, "MINIQUEST");
     else if (!g_shown.has)
         std::snprintf(out.zone, sizeof out.zone, "--");
     else if (g_shown.level == 0)
@@ -149,7 +154,6 @@ void frame(const Inputs &in, View &out) {
     if (in.in_story) std::strncat(out.zone, " [story]", sizeof out.zone - std::strlen(out.zone) - 1);
 
     // a fast travel names the area it landed in, finer than the level, and holds while the level is that one
-    const char *name = name_of(in.level);
     if (in.point[0] && in.level && in.point_level == in.level)
         std::snprintf(out.section, sizeof out.section, "%s", in.point);
     else if (in.level && name)

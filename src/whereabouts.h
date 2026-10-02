@@ -44,7 +44,7 @@ struct Inputs {
 };
 
 struct View {
-    char zone[64];     // "ZONE_HISS [lv3] [story]", "THE_GAP", "CHALLENGE <machine>", "--"
+    char zone[64];     // "ZONE_HISS [lv3] [story]", "THE_GAP", "CHALLENGE <machine>", "MINIQUEST", "--"
     char section[64];  // a fast travel's area, the level's name, its [areas] label, its id's first 8 hex digits, "--"
     long seconds;      // in the zone
     bool paused;
