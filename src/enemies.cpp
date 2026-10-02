@@ -460,20 +460,21 @@ void log_new_kinds(long calls) {
 }
 
 // --- What the dictionary gets (dict.h): an enemy's kind and stats once the same entity has shown the same ones for
-// kSettleCalls runner calls, and a linked row's faction once two samples agree. One read lies two ways: a torn row
-// (2026-10-01 19:10:51, one walk listed 12 kinds shaped like pointers, with levels like -181075373) and a fresh entity,
-// which reads level 1, its base max and no shield before it is scaled and its shield attached (kind 89cc3f802c4200ae:
-// 3840, lvl 1, no shield, then 30770, lvl 8, shield 3989 a second later, 2026-09-30). The fresh window ends with the
-// game's progress, so the settle counts runner calls, not wall time: a pause or a load in the first frames would
-// otherwise settle the fresh values. The dictionary keeps what it is first given; a kind whose max grows later still
-// keeps the first (the anomaly ally bae0249c6ca1ce74 reads 200 for 2 to 17 s, then 300).
+// kSettleCalls runner calls; factions from those enemies only. A linked row's faction is not fed: its column read
+// 3f800000 and 0000012c on 2026-10-01, a Health fraction of 1.0 and a max of 300, not a hash. One read lies two ways: a
+// torn row (2026-10-01 19:10:51, one walk listed 12 kinds shaped like pointers, with levels like -181075373) and a
+// fresh entity, which reads level 1, its base max and no shield before it is scaled and its shield attached (kind
+// 89cc3f802c4200ae: 3840, lvl 1, no shield, then 30770, lvl 8, shield 3989 a second later, 2026-09-30). The fresh
+// window ends with the game's progress, so the settle counts runner calls, not wall time: a pause or a load in the
+// first frames would otherwise settle the fresh values. The dictionary keeps what it is first given; a kind whose max
+// grows later still keeps the first (the anomaly ally bae0249c6ca1ce74 reads 200 for 2 to 17 s, then 300).
 constexpr long kSettleCalls = 60;  // ~2 s at the runner's 30 calls a second
 constexpr int32_t kMaxLevel = 100;
 
 struct Sighting {
     uint64_t handle = 0, kind = 0;
     dict::Stats stats;
-    int64_t since = 0;  // the runner call at which this entity first showed these values; a linked row's sample time
+    int64_t since = 0;  // the runner call at which this entity first showed these values
     bool fed = false;
 };
 
@@ -514,10 +515,10 @@ class Sightings {
     Sighting rows_[2][kMaxFound];
     int n_[2] = {}, now_ = 0;
 };
-Sightings g_enemy_sightings, g_linked_sightings;
+Sightings g_enemy_sightings;
 
-// After the walk of runner call `calls` at `now`; `sampled` when it read the linked rows.
-void feed_dict(long calls, int64_t now, bool sampled) {
+// After the walk of runner call `calls`.
+void feed_dict(long calls) {
     g_enemy_sightings.begin();
     for (int i = 0; i < g_found_n; i++) {
         const Enemy &e = g_found[i];
@@ -533,20 +534,6 @@ void feed_dict(long calls, int64_t now, bool sampled) {
         k->fed = true;
     }
     g_enemy_sightings.end();
-    if (!sampled) return;
-    g_linked_sightings.begin();
-    for (int i = 0; i < g_linked_n; i++) {
-        Sighting s;
-        s.handle = g_linked[i].handle;
-        s.stats.max = g_linked[i].max;
-        s.stats.faction = g_linked[i].faction;
-        s.since = now;
-        Sighting *l = g_linked_sightings.add(s);
-        if (!l || l->fed || !l->stats.faction || now - l->since < kListGapUs) continue;
-        dict::faction(l->stats.faction);
-        l->fed = true;
-    }
-    g_linked_sightings.end();
 }
 
 float distance_to_player(const float p[3]) {
@@ -630,7 +617,7 @@ void walk_once(void *world, const player::State &s, long calls) {
         g_period.slowest = g_walk;
     }
     log_new_kinds(calls);
-    feed_dict(calls, t0, t0 - g_linked_logged_at >= kListGapUs);  // the walk's own test for a linked sample
+    feed_dict(calls);
     if (t0 - g_linked_logged_at >= kListGapUs) {
         // The sample is capped, so its count alone misses a hit on the nearest row: its points are the second key.
         int nearest = 0;
