@@ -7,7 +7,8 @@
 // *_switch_to_level family by a path, its basename kept; AKTH-0114). The level itself is the id at GameState+0x90,
 // which changes a moment after the call, so the name binds to the first id that differs from the one current at the
 // call; an elevator changes the id with no call, and such an id keeps its ini label or its digits. A pair bound is
-// written to [areas], the game's name over a hand label, so the table outlives the inject.
+// written to [areas], the game's name over a hand label, so the table outlives the inject. [area_zones] is hand-typed
+// only: the zone a level with no district belongs to, a Resonant's arena (02708bbb=ZONE_PATTERN).
 //
 // The clock: from zero at every change of zone, a return included, and still while the game is paused. Outside every
 // district is a zone of its own. A district is taken once it has held kZoneSettle of running time, a stretch with no
@@ -44,7 +45,8 @@ struct Inputs {
 };
 
 struct View {
-    char zone[64];     // "ZONE_HISS [lv3] [story]", "THE_GAP", "CHALLENGE <machine>", "MINIQUEST", "--"
+    char zone[64];  // "ZONE_HISS [lv3] [story]", "THE_GAP", "CHALLENGE <machine>", an [area_zones] zone, "MINIQUEST",
+                    // "--"
     char section[64];  // a fast travel's area, the level's name, its [areas] label, its id's first 8 hex digits, "--"
     long seconds;      // in the zone
     bool paused;
@@ -54,8 +56,9 @@ struct View {
 // is. The render thread.
 void frame(const Inputs &in, View &out);
 
-// Writes the names bound since the last flush to [areas] of the ini at `ini`, and reads the label of the level the
-// last frame saw. Not the game's threads, not Present: the walk thread, once a second.
+// Writes the names bound since the last flush to [areas] of the ini at `ini`, and reads the label and the
+// [area_zones] zone of the level the last frame saw. Not the game's threads, not Present: the walk thread, once a
+// second.
 void flush(const wchar_t *ini);
 
 // Everything forgotten: the clock, the names, the label. For the tests.

@@ -32,9 +32,10 @@ char g_pending[kNameLen];
 uint64_t g_pending_from, g_pending_at;
 bool g_has_pending;
 
-// The [areas] label of g_label_level, as flush() last read it; g_seen_level the level the last frame saw.
+// The [areas] label of g_label_level and its [area_zones] zone, as flush() last read them; g_seen_level the level the
+// last frame saw.
 uint64_t g_label_level, g_seen_level;
-char g_label[32];
+char g_label[32], g_label_zone[32];
 
 // The zone's clock. g_zone is the zone it runs in, the sonar's id or "" outside every district, and g_shown that zone
 // as the sonar last read it. g_away is the running time since the sonar last read g_zone, which no zone owns until one
@@ -141,10 +142,14 @@ void frame(const Inputs &in, View &out) {
     const char *name = name_of(in.level);
     const char *known = name ? name : (g_label[0] && g_label_level == in.level ? g_label : nullptr);
     const bool sequence = in.level && known && std::strncmp(known, "zone_", 5) != 0;
+    // a level with no district that Lucas placed in one by hand, a Resonant's arena among them
+    const bool placed = in.level && g_label_zone[0] && g_label_level == in.level;
     if (!g_shown.has && in.in_gap)
         std::snprintf(out.zone, sizeof out.zone, "THE_GAP");
     else if (!g_shown.has && in.challenge)
         std::snprintf(out.zone, sizeof out.zone, "CHALLENGE %s", machine_label(in.machine, hex, sizeof hex));
+    else if (!g_shown.has && placed)
+        std::snprintf(out.zone, sizeof out.zone, "%s", g_label_zone);
     else if (!g_shown.has && sequence)
         std::snprintf(out.zone, sizeof out.zone, "MINIQUEST");
     else if (!g_shown.has)
@@ -191,13 +196,15 @@ void flush(const wchar_t *ini) {
         std::swprintf(value, std::size(value), L"%hs", fresh[i].name);
         WritePrivateProfileStringW(L"areas", key, value, ini);
     }
-    wchar_t label[32] = L"";
+    wchar_t label[32] = L"", zone[32] = L"";
     if (level) {
         std::swprintf(key, std::size(key), L"%08lx", static_cast<unsigned long>(level >> 32));
         GetPrivateProfileStringW(L"areas", key, L"", label, static_cast<DWORD>(std::size(label)), ini);
+        GetPrivateProfileStringW(L"area_zones", key, L"", zone, static_cast<DWORD>(std::size(zone)), ini);
     }
     AcquireSRWLockExclusive(&g_lock);
     std::snprintf(g_label, sizeof g_label, "%ls", label);
+    std::snprintf(g_label_zone, sizeof g_label_zone, "%ls", zone);
     g_label_level = level;
     ReleaseSRWLockExclusive(&g_lock);
 }
@@ -207,7 +214,7 @@ void reset() {
     g_count = 0;
     g_has_pending = false;
     g_label_level = g_seen_level = 0;
-    g_label[0] = g_zone[0] = g_next[0] = '\0';
+    g_label[0] = g_label_zone[0] = g_zone[0] = g_next[0] = '\0';
     g_zone_secs = g_away = g_next_held = g_empty = 0.0;
     g_shown = g_next_shown = {};
     ReleaseSRWLockExclusive(&g_lock);

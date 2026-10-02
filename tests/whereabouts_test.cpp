@@ -201,3 +201,21 @@ TEST(flush_writes_a_bound_name_and_reads_a_label) {
     CHECK(std::wcscmp(got, L"taxi_puzzle") == 0);
     DeleteFileW(ini);
 }
+
+// 2026-10-02 01:11: a Resonant's arena streamed in with no call and no district; Lucas placed it in ZONE_PATTERN.
+TEST(a_zone_placed_by_hand_names_a_level_with_no_district) {
+    whereabouts::reset();
+    const wchar_t *ini = L".\\whereabouts-test-zone.ini";
+    DeleteFileW(ini);
+    WritePrivateProfileStringW(L"areas", L"184dcbbd", L"resonant_deserter", ini);
+    WritePrivateProfileStringW(L"area_zones", L"184dcbbd", L"ZONE_PATTERN", ini);
+    whereabouts::Inputs in;
+    in.level = kTower;
+    play("", 0.5, in);
+    whereabouts::flush(ini);
+    const whereabouts::View v = play("", 0.5, in);
+    CHECK(is(v.zone, "ZONE_PATTERN"));
+    CHECK(is(v.section, "resonant_deserter"));
+    CHECK(is(play("ZONE_HISS", 5.0, in).zone, "ZONE_HISS [lv3]"));  // a district wins
+    DeleteFileW(ini);
+}
