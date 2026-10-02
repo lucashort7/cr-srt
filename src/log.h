@@ -21,6 +21,9 @@ void shutdown();
 // <folder><basename><suffix>, e.g. path(L".cache").
 std::wstring path(const wchar_t *suffix);
 
+// <folder><name>: a file or folder beside the DLL whatever the DLL is called, e.g. beside(L"dict").
+std::wstring beside(const wchar_t *name);
+
 // wsprintf formatting: no floats. Lines past ~1000 characters are cut. Past kQueueMax queued lines the line is dropped
 // and counted; the count is written when the queue drains.
 void write(const char *fmt, ...);

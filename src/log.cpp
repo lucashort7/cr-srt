@@ -108,6 +108,8 @@ void shutdown() {
 
 std::wstring path(const wchar_t *suffix) { return std::wstring(g_dir) + g_name + suffix; }
 
+std::wstring beside(const wchar_t *name) { return std::wstring(g_dir) + name; }
+
 void write(const char *fmt, ...) {
     char buf[kLineMax];
     int n = 0;

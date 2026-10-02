@@ -3,6 +3,7 @@
 // thread walks every [enemies] interval_ms (default 100), and only when the runner was called since its last walk; the
 // runner's own call stores nothing for it beyond what runner.h already publishes. A walk outside a system call reads
 // while the game writes: rows that fail the health checks are rejected and counted, never published.
+// The thread also runs the dictionary (dict.h): what it meets goes there, and so do the keys the hooks queue.
 // The route and its measurements: the enemy research note in the vault, section "The list without damage"; the move
 // off the game's thread: story AKTH-0103.
 #pragma once

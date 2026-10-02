@@ -2,6 +2,7 @@
 #include "enemies.h"
 
 #include "clock.h"
+#include "dict.h"
 #include "ecs.h"
 #include "game.h"
 #include "hooks/runner.h"
@@ -261,14 +262,17 @@ void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
 }
 
 // Attachments with more than 1 max health, by owner. Every enemy also carries a 1/1-health attachment whose role is
-// unknown; the max is what tells it from a shield, a heuristic until something names the difference.
+// unknown; the max is what tells it from a shield, a heuristic until something names the difference. One with a
+// fraction outside [0, 1] is no shield: from 2026-10-01 11:50 the panel drew 2997 rows of "shield -2147483648/32512",
+// a max that held for seconds and hid the real shield, the larger max winning.
 void read_attachments(uint64_t chunk, const Class &c, uint32_t capacity) {
     if (!copy_column(chunk, c.attachment, capacity, game::kAttachmentRowSize, g_attachment)) return;
     for (uint32_t r = 0; r < capacity && g_shields_n < kMaxFound; r++) {
         const uint8_t *health = g_health + r * game::kHealthRowSize;
+        const auto fraction = at<float>(health);
         const auto max = at<int32_t>(health + 4);
-        if (!g_handles[r] || max <= 1) continue;
-        g_shields[g_shields_n++] = {at<uint64_t>(g_attachment + r * game::kAttachmentRowSize), at<float>(health), max};
+        if (!g_handles[r] || max <= 1 || !std::isfinite(fraction) || fraction < 0.0f || fraction > 1.0f) continue;
+        g_shields[g_shields_n++] = {at<uint64_t>(g_attachment + r * game::kAttachmentRowSize), fraction, max};
     }
 }
 
@@ -455,6 +459,96 @@ void log_new_kinds(long calls) {
     }
 }
 
+// --- What the dictionary gets (dict.h): an enemy's kind and stats once the same entity has shown the same ones for
+// kSettleCalls runner calls, and a linked row's faction once two samples agree. One read lies two ways: a torn row
+// (2026-10-01 19:10:51, one walk listed 12 kinds shaped like pointers, with levels like -181075373) and a fresh entity,
+// which reads level 1, its base max and no shield before it is scaled and its shield attached (kind 89cc3f802c4200ae:
+// 3840, lvl 1, no shield, then 30770, lvl 8, shield 3989 a second later, 2026-09-30). The fresh window ends with the
+// game's progress, so the settle counts runner calls, not wall time: a pause or a load in the first frames would
+// otherwise settle the fresh values. The dictionary keeps what it is first given; a kind whose max grows later still
+// keeps the first (the anomaly ally bae0249c6ca1ce74 reads 200 for 2 to 17 s, then 300).
+constexpr long kSettleCalls = 60;  // ~2 s at the runner's 30 calls a second
+constexpr int32_t kMaxLevel = 100;
+
+struct Sighting {
+    uint64_t handle = 0, kind = 0;
+    dict::Stats stats;
+    int64_t since = 0;  // the runner call at which this entity first showed these values; a linked row's sample time
+    bool fed = false;
+};
+
+bool same_stats(const dict::Stats &a, const dict::Stats &b) {
+    return a.max == b.max && a.level == b.level && a.faction == b.faction && a.b3c == b.b3c && a.shield == b.shield;
+}
+
+bool plausible(const dict::Stats &s) {
+    return s.max > 0 && s.level >= 1 && s.level <= kMaxLevel && s.faction != 0 && s.shield >= 0;
+}
+
+// One pass's sightings and the pass before, each sorted by handle once complete.
+class Sightings {
+   public:
+    void begin() { n_[now_ ^= 1] = 0; }
+    // s as this pass sees it, with its since and fed carried over when the pass before saw the same entity showing
+    // the same kind and stats. Null past kMaxFound.
+    Sighting *add(Sighting s) {
+        if (n_[now_] >= kMaxFound) return nullptr;
+        const int was = now_ ^ 1;
+        const Sighting *begin = rows_[was], *end = begin + n_[was];
+        const Sighting *p = std::lower_bound(begin, end, s.handle,
+                                             [](const Sighting &a, uint64_t handle) { return a.handle < handle; });
+        if (p != end && p->handle == s.handle && p->kind == s.kind && same_stats(p->stats, s.stats)) {
+            s.since = p->since;
+            s.fed = p->fed;
+        }
+        Sighting &slot = rows_[now_][n_[now_]++];
+        slot = s;
+        return &slot;
+    }
+    void end() {
+        std::sort(rows_[now_], rows_[now_] + n_[now_],
+                  [](const Sighting &a, const Sighting &b) { return a.handle < b.handle; });
+    }
+
+   private:
+    Sighting rows_[2][kMaxFound];
+    int n_[2] = {}, now_ = 0;
+};
+Sightings g_enemy_sightings, g_linked_sightings;
+
+// After the walk of runner call `calls` at `now`; `sampled` when it read the linked rows.
+void feed_dict(long calls, int64_t now, bool sampled) {
+    g_enemy_sightings.begin();
+    for (int i = 0; i < g_found_n; i++) {
+        const Enemy &e = g_found[i];
+        Sighting s;
+        s.handle = e.id | static_cast<uint64_t>(e.generation) << 32;
+        std::memcpy(&s.kind, e.kind, sizeof s.kind);
+        s.stats = {e.max, e.level, e.faction, e.byte3c, e.shield_max};
+        s.since = calls;
+        Sighting *k = g_enemy_sightings.add(s);
+        if (!k || k->fed || !k->kind || !plausible(k->stats) || calls - k->since < kSettleCalls) continue;
+        dict::kind(k->kind, k->stats);
+        dict::faction(k->stats.faction);
+        k->fed = true;
+    }
+    g_enemy_sightings.end();
+    if (!sampled) return;
+    g_linked_sightings.begin();
+    for (int i = 0; i < g_linked_n; i++) {
+        Sighting s;
+        s.handle = g_linked[i].handle;
+        s.stats.max = g_linked[i].max;
+        s.stats.faction = g_linked[i].faction;
+        s.since = now;
+        Sighting *l = g_linked_sightings.add(s);
+        if (!l || l->fed || !l->stats.faction || now - l->since < kListGapUs) continue;
+        dict::faction(l->stats.faction);
+        l->fed = true;
+    }
+    g_linked_sightings.end();
+}
+
 float distance_to_player(const float p[3]) {
     if (!g_player_located) return -1.0f;
     const float dx = p[0] - g_player_pos[0], dy = p[1] - g_player_pos[1], dz = p[2] - g_player_pos[2];
@@ -536,6 +630,7 @@ void walk_once(void *world, const player::State &s, long calls) {
         g_period.slowest = g_walk;
     }
     log_new_kinds(calls);
+    feed_dict(calls, t0, t0 - g_linked_logged_at >= kListGapUs);  // the walk's own test for a linked sample
     if (t0 - g_linked_logged_at >= kListGapUs) {
         // The sample is capped, so its count alone misses a hit on the nearest row: its points are the second key.
         int nearest = 0;
@@ -596,8 +691,11 @@ void read_ini() {
 
 // Waits the interval on the stop event, then walks when the runner was called since the last walk: a menu, a load or
 // a paused game walks nothing. A wake that lands during a walk is not queued; the next wait starts after the walk.
+// The dictionary's work rides every wake, walked or not: a world's type registry once, the keys the hooks queued, the
+// files.
 DWORD WINAPI walker(LPVOID) {
     log::write("enemies: walk thread tid %lu", GetCurrentThreadId());
+    dict::open();
     long walked_calls = 0;
     int64_t ini_at = -kListGapUs;
     g_period_at = now_us();
@@ -615,6 +713,7 @@ DWORD WINAPI walker(LPVOID) {
         long calls = 0;
         runner::player_state(s, &calls);
         void *world = runner::world();
+        if (world) dict::types(mem::live(), reinterpret_cast<uint64_t>(world));
         if (world && calls != walked_calls) {
             walk_once(world, s, calls);
             walked_calls = calls;
@@ -626,7 +725,9 @@ DWORD WINAPI walker(LPVOID) {
             g_period = {};
             g_period_at = now;
         }
+        dict::step(false);
     }
+    dict::step(true);
     static const std::wstring ini = log::path(L".ini");
     whereabouts::flush(ini.c_str());  // a name bound in the last second
     log::write("enemies: walk thread ending");

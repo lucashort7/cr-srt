@@ -70,6 +70,7 @@ inline constexpr uint8_t kSpawnBundlePrologue[] = {
     0x48, 0x89, 0x48, 0x08, 0x55, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41,
     0x57, 0x48, 0x8d, 0xa8, 0x88, 0xfe, 0xff, 0xff, 0x48, 0x81, 0xec, 0x38, 0x02, 0x00, 0x00};
 inline constexpr uint32_t kSpawnRecordSize = 0x90;
+inline constexpr uintptr_t kSpawnRecordKind = 0x20;  // 8 bytes, the kind SpawnedNPC+0x30 carries once it is born
 // The function that fills a fresh entity's rows, found by the lookups it makes in the frame of a bundle with records
 // (build 9 of the probe, 2026-10-01): apply(chunk index, list, range, holder), the list {u64 count, u64 *entries} of
 // type hashes in the low dword, the range's low dword the first row and high dword the count past it. Per type it
@@ -79,8 +80,21 @@ inline constexpr uint32_t kSpawnRecordSize = 0x90;
 inline constexpr uintptr_t kSpawnApply = 0x1d7e5b0;
 inline constexpr uint8_t kSpawnApplyPrologue[] = {0x4c, 0x89, 0x44, 0x24, 0x18, 0x53, 0x55, 0x56, 0x57, 0x41, 0x54,
                                                   0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x58};
-inline constexpr uintptr_t kTypeRegistry = 0x10;  // from the world
+inline constexpr uintptr_t kTypeRegistry = 0x10;  // from the object apply's holder points at
+// The runner's world (runner::world) holds the same registry's pointer at +0, and again at +8: 2026-10-01 both read
+// 0x15FA53F0500 at world 0x15FAB290080, the registry whose 1587 types the apply probe read, while its +0x10 is a count.
+inline constexpr uintptr_t kWorldTypeRegistry = 0x0;
+// The registry: +0 a pointer to the sorted u32 hashes, +8 their u32 count (1587 in build 1.4.0), +0x10 a pointer to
+// the records, one per hash in the same order. A record's +0 is the type's name, a string_view into the exe's
+// r::getTypeName<...> string with its length at +8 (Health's: 0x20, "heron::health::component::Health"), and +0x10 the
+// row's size.
+inline constexpr uintptr_t kRegistryHashes = 0x0;
+inline constexpr uintptr_t kRegistryCount = 0x8;
+inline constexpr uintptr_t kRegistryRecords = 0x10;
 inline constexpr uint32_t kTypeRecordSize = 0x58;
+inline constexpr uintptr_t kTypeName = 0x0;
+inline constexpr uintptr_t kTypeNameLength = 0x8;
+inline constexpr uintptr_t kTypeSize = 0x10;
 inline constexpr uintptr_t kTypeConstruct = 0x30;   // the record's callback for a row without a source
 inline constexpr uintptr_t kTypeFromSource = 0x38;  // with one
 // Health's two (build 11, 2026-10-01; the record's +0 names heron::health::component::Health): construct(column, row)

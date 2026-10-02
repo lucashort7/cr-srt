@@ -1,6 +1,7 @@
 // spawn.cpp
 #include "hooks/spawn.h"
 
+#include "dict.h"
 #include "game.h"
 #include "hooks/registry.h"
 #include "log.h"
@@ -28,6 +29,7 @@ hooks::Hook g_submit("spawn_submit");
 hooks::Hook g_bundle("spawn_bundle");
 hooks::Hook g_find("spawn_findtype");
 SRWLOCK g_lock = SRWLOCK_INIT;
+bool g_probe = false;  // [probe] spawn: everything below but the dictionary's feed
 
 // The window: from a bundle call with records to process until the next bundle call, one frame, on every thread, each
 // lookup of a hash kNamed knows is recorded by caller and hash, with the first archetype, thread and result seen: the
@@ -317,11 +319,34 @@ void log_lookups(uintptr_t exe) {
     ReleaseSRWLockExclusive(&g_lookup_lock);
 }
 
+// The kinds in the queue the bundle is about to drain, offered to the dictionary (dict.h): a kind spawned past the
+// walk's reach, or dead before its next wake, still lands. A call with no records costs one 12-byte copy.
+constexpr uint32_t kFeedMax = 256;
+void feed(const void *rdx) {
+    uint8_t head[12];
+    if (!mem::copy(rdx, head, sizeof head)) return;
+    uint64_t records = 0;
+    uint32_t count = 0;
+    std::memcpy(&records, head, sizeof records);
+    std::memcpy(&count, head + 8, sizeof count);
+    if (!records || !count || count > kFeedMax) return;
+    for (uint32_t i = 0; i < count; i++) {
+        const uint64_t at = records + static_cast<uint64_t>(i) * game::kSpawnRecordSize + game::kSpawnRecordKind;
+        uint64_t kind = 0;
+        if (mem::copy(reinterpret_cast<const void *>(at), &kind, sizeof kind)) dict::offer(dict::kKinds, kind);
+    }
+}
+
 uint64_t hk_bundle(void *a, void *b, void *c, void *d, uint64_t s5, uint64_t s6, uint64_t s7, uint64_t s8, uint64_t s9,
                    uint64_t s10, uint64_t s11, uint64_t s12) {
     hooks::Call call(g_bundle);
     const auto original = g_bundle.original<SpawnFn>();
     if (call.stopping()) return original(a, b, c, d, s5, s6, s7, s8, s9, s10, s11, s12);
+    feed(b);
+    if (!g_probe) {
+        call.before_original();
+        return original(a, b, c, d, s5, s6, s7, s8, s9, s10, s11, s12);
+    }
     const auto caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
     // the records are read before the original walks them, since it drains the queue: the first record, what its
     // +0x78 pointer holds (a heap object per record, unread until 2026-10-01), and the same record after the original
@@ -508,15 +533,17 @@ void hk_copy(const void *source, void *column, uint32_t row) {
 
 }  // namespace
 
-bool install(HMODULE exe, uintptr_t find_type) {
+bool install(HMODULE exe, uintptr_t find_type, bool probe) {
     g_exe = reinterpret_cast<uintptr_t>(exe);
-    auto *submit = reinterpret_cast<uint8_t *>(exe) + game::kSpawnSubmit;
+    g_probe = probe;
     auto *bundle = reinterpret_cast<uint8_t *>(exe) + game::kSpawnBundle;
     bool any = false;
+    if (prologue_is(bundle, game::kSpawnBundlePrologue, sizeof game::kSpawnBundlePrologue, "bundle"))
+        any = g_bundle.install(bundle, reinterpret_cast<void *>(&hk_bundle));
+    if (!probe) return any;
+    auto *submit = reinterpret_cast<uint8_t *>(exe) + game::kSpawnSubmit;
     if (prologue_is(submit, game::kSpawnSubmitPrologue, sizeof game::kSpawnSubmitPrologue, "submit"))
         any = g_submit.install(submit, reinterpret_cast<void *>(&hk_submit)) || any;
-    if (prologue_is(bundle, game::kSpawnBundlePrologue, sizeof game::kSpawnBundlePrologue, "bundle"))
-        any = g_bundle.install(bundle, reinterpret_cast<void *>(&hk_bundle)) || any;
     auto *apply = reinterpret_cast<uint8_t *>(exe) + game::kSpawnApply;
     if (prologue_is(apply, game::kSpawnApplyPrologue, sizeof game::kSpawnApplyPrologue, "apply"))
         any = g_apply.install(apply, reinterpret_cast<void *>(&hk_apply)) || any;

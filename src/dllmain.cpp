@@ -61,9 +61,10 @@ DWORD WINAPI boot_main(LPVOID) {
         if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"damage", 0, log::path(L".ini").c_str()))
             damage::install(exe);
     }
-    // the spawn probe's two functions are checked by prologue, not solved; the lookup it records is the solve's
-    if (!lifecycle::stopping && GetPrivateProfileIntW(L"probe", L"spawn", 1, log::path(L".ini").c_str()))
-        spawn::install(exe, o.find_type);
+    // the spawn queue's drain feeds the dictionary whatever the ini says, and [probe] spawn adds the probe around it;
+    // its functions are checked by prologue, not solved, and the lookup the probe records is the solve's
+    if (!lifecycle::stopping)
+        spawn::install(exe, o.find_type, GetPrivateProfileIntW(L"probe", L"spawn", 1, log::path(L".ini").c_str()) != 0);
     // The walk thread, runner or not: it walks only what the runner publishes and idles without it, and it is where the
     // ini's [areas] is read and written for whereabouts, which the overlay draws whatever hooked.
     if (!lifecycle::stopping) enemies::start();

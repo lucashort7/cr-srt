@@ -45,6 +45,7 @@ add_library(crsrt-core STATIC
   src/cache.cpp
   src/solve.cpp
   src/boot.cpp
+  src/dict.cpp
   src/ecs.cpp
   src/envwatch.cpp
   src/motion.cpp
@@ -91,6 +92,7 @@ target_link_options(cr-probe PRIVATE -static -s)
 add_executable(crsrt-tests
   tests/main.cpp
   tests/clock_test.cpp
+  tests/dict_test.cpp
   tests/ecs_test.cpp
   tests/enemies_test.cpp
   tests/fixtures_test.cpp

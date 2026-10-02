@@ -24,5 +24,7 @@ uses the word as written.
 - **Guarded copy** (`guarded.h`): a copy whose access violation returns false, at memcpy's cost; what the live source
   reads with.
 - **World**, **Columns** (`ecs.h`): the slot table and its entries, and one archetype's columns, copied.
+- **Dictionary** (`dict.h`): every type, kind and faction met, in `dict\*.tsv` beside the DLL; a key is written once,
+  when it is new, and the walk thread is the only writer.
 - **Hook**, **Call** (`hooks/registry.h`): one hooked function, and one call inside its detour; the registry holds every
   hook for the unloader and the meters.

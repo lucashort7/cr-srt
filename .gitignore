@@ -7,3 +7,5 @@ build/
 *.bin
 *.dump
 !tests/fixtures/*.bin
+dict/*.tmp
+tests/dict-test/
