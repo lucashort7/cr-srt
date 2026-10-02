@@ -253,7 +253,7 @@ void read_npcs(uint64_t chunk, const Class &c, uint32_t capacity) {
         e.level = at<int32_t>(g_level + r * game::kNpcLevelRowSize);
         const uint8_t *spawned = g_spawned + r * game::kSpawnedNpcRowSize;
         std::memcpy(e.kind, spawned + game::kSpawnedKind, sizeof e.kind);
-        e.byte3c = spawned[game::kSpawnedByte3c];
+        e.boss_type = spawned[game::kSpawnedBossType];
         e.source_id = at<uint32_t>(spawned + game::kSpawnedSource);
         e.source_generation = at<uint32_t>(spawned + game::kSpawnedSource + 4);
         std::memcpy(e.position, g_transform + r * game::kWorldTransformRowSize + game::kWorldPosition,
@@ -451,10 +451,10 @@ void log_new_kinds(long calls) {
         char dist[24];
         tenths(e.distance, dist);
         log::write(
-            "enemies: new kind %02x%02x%02x%02x%02x%02x%02x%02x  %ld max  faction %08lx  lvl %ld  b3c %u  from "
+            "enemies: new kind %02x%02x%02x%02x%02x%02x%02x%02x  %ld max  faction %08lx  lvl %ld  boss %u  from "
             "%lx/%lu  dist %s (call %ld)",
             e.kind[0], e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7],
-            static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.byte3c,
+            static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.boss_type,
             static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist, calls);
     }
 }
@@ -479,7 +479,8 @@ struct Sighting {
 };
 
 bool same_stats(const dict::Stats &a, const dict::Stats &b) {
-    return a.max == b.max && a.level == b.level && a.faction == b.faction && a.b3c == b.b3c && a.shield == b.shield;
+    return a.max == b.max && a.level == b.level && a.faction == b.faction && a.boss_type == b.boss_type &&
+           a.shield == b.shield;
 }
 
 bool plausible(const dict::Stats &s) {
@@ -525,7 +526,7 @@ void feed_dict(long calls) {
         Sighting s;
         s.handle = e.id | static_cast<uint64_t>(e.generation) << 32;
         std::memcpy(&s.kind, e.kind, sizeof s.kind);
-        s.stats = {e.max, e.level, e.faction, e.byte3c, e.shield_max};
+        s.stats = {e.max, e.level, e.faction, e.boss_type, e.shield_max};
         s.since = calls;
         Sighting *k = g_enemy_sightings.add(s);
         if (!k || k->fed || !k->kind || !plausible(k->stats) || calls - k->since < kSettleCalls) continue;
@@ -573,11 +574,11 @@ void log_list(long calls) {
             wsprintfA(shield, "  shield %d/%ld", game::points(e.shield_fraction, e.shield_max),
                       static_cast<long>(e.shield_max));
         log::write(
-            "  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  b3c %u  "
+            "  %lx/%lu  %d/%ld  faction %08lx  lvl %ld  kind %02x%02x%02x%02x%02x%02x%02x%02x  boss %u  "
             "from %lx/%lu  dist %s%s",
             static_cast<unsigned long>(e.id), static_cast<unsigned long>(e.generation), game::points(e.fraction, e.max),
             static_cast<long>(e.max), static_cast<unsigned long>(e.faction), static_cast<long>(e.level), e.kind[0],
-            e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.byte3c,
+            e.kind[1], e.kind[2], e.kind[3], e.kind[4], e.kind[5], e.kind[6], e.kind[7], e.boss_type,
             static_cast<unsigned long>(e.source_id), static_cast<unsigned long>(e.source_generation), dist, shield);
     }
 }

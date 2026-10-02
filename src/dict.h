@@ -5,7 +5,7 @@
 //
 // The files: a header line naming the columns, then one row per key, tab-separated, the key first in hex.
 //   types.tsv     hash  name  size  first_seen         the registry's (types()), name and size included
-//   kinds.tsv     key   name  max  level  faction  b3c  shield  first_seen
+//   kinds.tsv     key   name  max  level  faction  boss_type  shield  first_seen
 //   factions.tsv  hash  name  first_seen
 // A kind's key is its 8 bytes in memory order, as the log prints them; a type's and a faction's are the 32-bit hash.
 // A write reads the file again and changes only the rows it adds and the empty cells it fills: a name typed by hand
@@ -30,7 +30,7 @@ struct Stats {
     int32_t max = 0;
     int32_t level = 0;
     uint32_t faction = 0;
-    uint8_t b3c = 0;
+    uint8_t boss_type = 0;
     int32_t shield = 0;  // the shield's max, 0 for none
 };
 

@@ -189,8 +189,10 @@ inline constexpr uint32_t kSpawnedNpc = 0x4967e683;   // heron::npc_spawner::com
 inline constexpr uint32_t kWorldTransform = 0x6cfbb2a9;  // coregame::component::WorldTransformReadOnly
 inline constexpr uint32_t kAttachment = 0x5cf3ff20;      // heron::health_attachments::component::Attachment
 inline constexpr uint32_t kSpawnedNpcRowSize = 0x60;
-inline constexpr uint32_t kSpawnedKind = 0x30;    // 8 bytes, the enemy's kind
-inline constexpr uint32_t kSpawnedByte3c = 0x3c;  // 1 byte, meaning unknown: 2 on every enemy met, 4 on two big ones
+inline constexpr uint32_t kSpawnedKind = 0x30;  // 8 bytes, the enemy's kind
+// 1 byte, set per spawn: 2 common, 4 a named elite, 6 a boss or an Apex. Named after the bossType field the exe
+// reflects (Command cost overrides, boss loot, NG+ effects); that this byte is that field is unproven.
+inline constexpr uint32_t kSpawnedBossType = 0x3c;
 inline constexpr uint32_t kSpawnedSource = 0;    // 8 bytes shaped like an entity handle, repeated at +8: the spawner's?
 inline constexpr uint32_t kFactionRowSize = 4;   // FNV-1a 32 of the faction's lowercase name
 inline constexpr uint32_t kNpcLevelRowSize = 8;  // the level in the first int

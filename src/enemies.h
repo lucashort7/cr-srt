@@ -22,7 +22,7 @@ struct Enemy {
     uint32_t faction = 0;             // FNV-1a 32 of the faction's lowercase name
     int32_t level = 0;
     uint8_t kind[8] = {};                           // SpawnedNPC +0x30, memory order
-    uint8_t byte3c = 0;                             // SpawnedNPC +0x3c, meaning unknown
+    uint8_t boss_type = 0;                          // SpawnedNPC +0x3c: 2 common, 4 elite, 6 boss
     uint32_t source_id = 0, source_generation = 0;  // SpawnedNPC +0, a handle: the spawner's, unconfirmed
     float position[3] = {};
     float distance = 0.0f;  // to the player; a negative value when the player's position is unknown

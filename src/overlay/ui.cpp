@@ -126,6 +126,16 @@ void faction_label(uint32_t hash, char *out, size_t cap) {
     std::snprintf(out, cap, "%04x", static_cast<unsigned>(hash >> 16));
 }
 
+// "common", "elite", "boss" for the bossType values met, the number for any other.
+void boss_type_label(uint8_t type, char *out, size_t cap) {
+    switch (type) {
+        case 2: std::snprintf(out, cap, "common"); return;
+        case 4: std::snprintf(out, cap, "elite"); return;
+        case 6: std::snprintf(out, cap, "boss"); return;
+        default: std::snprintf(out, cap, "%u", static_cast<unsigned>(type));
+    }
+}
+
 // "artillery", "moldbag_melee?" for a guess, or the kind's first four hex digits (all sixteen when `whole`).
 void kind_label(const uint8_t kind[8], bool whole, char *out, size_t cap) {
     uint64_t k = 0;
@@ -422,7 +432,7 @@ bool view_proj(float m[16], const player::State &p) {
     return true;
 }
 
-// Under each enemy the panel shows, its faction and kind at its feet: the walk's position through the camera.
+// Under each enemy the panel shows, its faction, kind and bossType at its feet: the walk's position through the camera.
 void labels(float w, float h, float px, const player::State &p, bool stale) {
     float m[16];
     if (stale || !view_proj(m, p)) return;
@@ -438,10 +448,11 @@ void labels(float w, float h, float px, const player::State &p, bool stale) {
         if (!(cw > 1e-4f)) continue;  // behind the camera
         const float nx = cx / cw, ny = cy / cw;
         if (std::fabs(nx) > 1.0f || std::fabs(ny) > 1.0f) continue;
-        char faction[16], kind[40];
+        char faction[16], kind[40], type[8];
         faction_label(e.faction, faction, sizeof faction);
         kind_label(e.kind, true, kind, sizeof kind);
-        std::snprintf(text, sizeof text, "%s %s", faction, kind);
+        boss_type_label(e.boss_type, type, sizeof type);
+        std::snprintf(text, sizeof text, "%s %s [%s]", faction, kind, type);
         const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(lpx, FLT_MAX, 0.0f, text);
         text_at(
             ImVec2(std::floor((nx + 1.0f) * 0.5f * w - size.x * 0.5f), std::floor((1.0f - ny) * 0.5f * h + lpx * 0.3f)),

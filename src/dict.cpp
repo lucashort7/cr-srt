@@ -30,7 +30,7 @@ constexpr int kMaxColumns = 8;
 
 // The columns of each file, by index in its schema.
 enum : uint8_t { kTypeHash, kTypeNameColumn, kTypeSizeColumn, kTypeFirst };
-enum : uint8_t { kKindKey, kKindName, kKindMax, kKindLevel, kKindFaction, kKindB3c, kKindShield, kKindFirst };
+enum : uint8_t { kKindKey, kKindName, kKindMax, kKindLevel, kKindFaction, kKindBossType, kKindShield, kKindFirst };
 enum : uint8_t { kFactionHash, kFactionName, kFactionFirst };
 
 constexpr uint8_t bit(int column) { return static_cast<uint8_t>(1u << column); }
@@ -47,12 +47,13 @@ struct Schema {
 };
 
 constexpr uint8_t kTypeCells = bit(kTypeNameColumn) | bit(kTypeSizeColumn);
-constexpr uint8_t kKindStats = bit(kKindMax) | bit(kKindLevel) | bit(kKindFaction) | bit(kKindB3c) | bit(kKindShield);
+constexpr uint8_t kKindStats =
+    bit(kKindMax) | bit(kKindLevel) | bit(kKindFaction) | bit(kKindBossType) | bit(kKindShield);
 constexpr Schema kSchemas[kClasses] = {
     {L"types.tsv", "type", {"hash", "name", "size", "first_seen"}, 4, kTypeCells, false},
     {L"kinds.tsv",
      "kind",
-     {"key", "name", "max", "level", "faction", "b3c", "shield", "first_seen"},
+     {"key", "name", "max", "level", "faction", "boss_type", "shield", "first_seen"},
      8,
      kKindStats,
      true},
@@ -620,12 +621,12 @@ void kind(uint64_t key, const Stats &stats) {
     char faction[16];
     wsprintfA(faction, "%08lx", static_cast<unsigned long>(stats.faction));
     ch.cells[kKindFaction] = faction;
-    ch.cells[kKindB3c] = number(stats.b3c);
+    ch.cells[kKindBossType] = number(stats.boss_type);
     ch.cells[kKindShield] = number(stats.shield);
     if (!record(kKinds, key, ch)) return;
-    log::write("dict: %s kind %s: max %ld lvl %ld faction %08lx b3c %u shield %ld", slot < 0 ? "new" : "filled",
+    log::write("dict: %s kind %s: max %ld lvl %ld faction %08lx boss_type %u shield %ld", slot < 0 ? "new" : "filled",
                key_text(kSchemas[kKinds], key).c_str(), static_cast<long>(stats.max), static_cast<long>(stats.level),
-               static_cast<unsigned long>(stats.faction), stats.b3c, static_cast<long>(stats.shield));
+               static_cast<unsigned long>(stats.faction), stats.boss_type, static_cast<long>(stats.shield));
 }
 
 void faction(uint32_t hash) {

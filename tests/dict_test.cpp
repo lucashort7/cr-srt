@@ -21,7 +21,7 @@ constexpr const wchar_t *kFiles[] = {L"types.tsv", L"kinds.tsv", L"factions.tsv"
 constexpr uint8_t kBlobBytes[8] = {0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73, 0xc5};  // blob, as the log prints it
 constexpr uint8_t kBruteBytes[8] = {0xfb, 0x0c, 0x53, 0x9b, 0x1d, 0xf3, 0xd2, 0x06};
 constexpr uint32_t kHiss = 0x4aac31a8;
-constexpr const char *kKindsHeader = "key\tname\tmax\tlevel\tfaction\tb3c\tshield\tfirst_seen";
+constexpr const char *kKindsHeader = "key\tname\tmax\tlevel\tfaction\tboss_type\tshield\tfirst_seen";
 
 uint64_t key_of(const uint8_t (&bytes)[8]) {
     uint64_t key = 0;
